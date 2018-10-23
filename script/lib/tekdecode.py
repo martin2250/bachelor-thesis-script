@@ -1,0 +1,89 @@
+#!/usr/bin/python3
+import os
+import struct
+
+import numpy as np
+
+
+def loadFileCSV(filename):
+    sample_rate = None
+    length = None
+    skiprows = 1
+
+    with open(filename) as f:
+        for line in f:
+            key, *value = line.split(',')
+            if key == 'Sample Interval':
+                sample_rate = round(1 / float(value[0]))
+            elif key == 'Record Length':
+                length = round(float(value[0]))
+            skiprows += 1
+            if key == 'Label':
+                break
+
+    _, Y = np.loadtxt(filename, delimiter=',',
+                      skiprows=skiprows, unpack=True)
+
+    if len(Y) != length:
+        raise UserWarning(
+            f'length of {filename} ({len(channels[0])}) does not match description ({length})')
+
+    return Y, sample_rate, length
+
+
+def loadFileISF(filename):
+    with open(filename, 'rb') as f:
+        content = f.read()
+
+    hashpos = content.index(b'#')
+    head = {key: values for (key, *values) in (line.split(' ')
+                                               for line in content[:hashpos].decode().split(';'))}
+
+    digits = int(chr(content[hashpos + 1]), 16)
+    data_length = int(content[hashpos + 2: hashpos + 2 + digits].decode())
+    data = content[hashpos + 2 + digits:]
+
+    if len(data) != data_length:
+        raise UserWarning(
+            f'file length ({len(data)}) does not match stated length ({data_length})')
+
+    if int(head['BIT_NR'][0]) != 16:
+        raise UserWarning(
+            f'ISF file uses incompatible bit depth: {head["BIT_NR"][0]}')
+
+    length = int(head[':WFMPRE:NR_PT'][0])
+    y_factor = float(head['YMULT'][0])
+    y_zero = float(head['YZERO'][0])
+    y_offset = float(head['YOFF'][0])
+    sample_rate = round(1 / float(head['XINCR'][0]))
+
+    fmt = {'MSB': '>', 'LSB': '<'}[head['BYT_OR'][0]] + str(length) + 'h'
+
+    if data_length != struct.calcsize(fmt):
+        raise UserWarning(
+            f'data length ({data_length}) does not match number of samples ({length})')
+
+    Y = np.array(struct.unpack(fmt, data))
+    Y = (Y - y_offset) * y_factor + y_zero
+
+    return Y, sample_rate, length
+
+
+def loadFile(filename, format=None):
+    filename = os.path.abspath(filename)
+    if format is None:
+        format = os.path.splitext(filename)[1]
+
+        if format.startswith('.'):
+            format = format[1:]
+
+        if len(format) == 0:
+            raise UserWarning(
+                f'file type of {filename} could not be determined, use format option')
+
+    parsers = {'csv': loadFileCSV, 'isf': loadFileISF}
+
+    if not format in parsers:
+        raise UserWarning(f'unknown format "{format}"')
+
+    return parsers[format](filename)
