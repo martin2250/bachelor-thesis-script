@@ -48,7 +48,8 @@ for axis in [ax.xaxis, ax.yaxis]:
     axis.set_major_formatter(ticker.FuncFormatter(lambda y, pos: (
         '{{:.{:1d}f}}'.format(int(np.maximum(-np.log10(y), 0)))).format(y)))
 
-plt.ylabel('\\sqrt(J_{ss}^{aus}(f))')
+plt.ylabel('$\\sqrt{J_{ss}^{aus}(f)}$ (µV)')
+plt.xlabel('$f$ (Hz)')
 plt.legend()
 
 plt.show()
