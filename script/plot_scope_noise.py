@@ -6,7 +6,8 @@ import matplotlib.ticker as ticker
 import numpy as np
 import scipy.signal
 
-import lib.tekdecode as tekdecode
+import lib.plotstyle
+import lib.tekdecode
 
 parser = argparse.ArgumentParser(
     description='generates power density plots from time-domain oscilloscope data')
@@ -21,7 +22,7 @@ frequency_total = None
 
 for file in args.files:
 
-    voltage, sample_rate_file, length = tekdecode.loadFile(file)
+    voltage, sample_rate_file, length = lib.tekdecode.loadFile(file)
 
     if sample_rate is None:
         sample_rate = sample_rate_file
@@ -37,19 +38,11 @@ for file in args.files:
     powers.append(power)
 
 print(powers)
-plt.plot(frequency_total, np.mean(powers, axis=0), label='file', alpha=0.7)
+
 
 ax = plt.gca()
-ax.set_xscale("log", nonposx='clip')
-ax.set_yscale("log", nonposy='clip')
-plt.grid(which='both')
+lib.plotstyle.format_bode_plot(ax)
 
-for axis in [ax.xaxis, ax.yaxis]:
-    axis.set_major_formatter(ticker.FuncFormatter(lambda y, pos: (
-        '{{:.{:1d}f}}'.format(int(np.maximum(-np.log10(y), 0)))).format(y)))
-
-plt.ylabel('$\\sqrt{J_{ss}^{aus}(f)}$ (µV)')
-plt.xlabel('$f$ (Hz)')
-plt.legend()
+ax.plot(frequency_total, np.mean(powers, axis=0), label='file', alpha=0.7)
 
 plt.show()
