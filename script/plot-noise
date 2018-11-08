@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 import argparse
+import os
+from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -10,39 +12,50 @@ import lib.plotstyle
 import lib.tekdecode
 
 parser = argparse.ArgumentParser(
-    description='generates power density plots from time-domain oscilloscope data')
+	description='generates power density plots from time-domain oscilloscope data')
 parser.add_argument('files', metavar='input_file', type=str, nargs='+',
                     help='csv/isf files from Tektronix scope')
+parser.add_argument('--output', type=str,
+                    help='output file')
 
 args = parser.parse_args()
 
-powers = []
-sample_rate = None
-frequency_total = None
 
-for file in args.files:
+def process_file(file):
+	voltage, sample_rate, length = lib.tekdecode.loadFile(file)
 
-    voltage, sample_rate_file, length = lib.tekdecode.loadFile(file)
+	frequency, power = scipy.signal.welch(
+		voltage, sample_rate, nperseg=100000)
 
-    if sample_rate is None:
-        sample_rate = sample_rate_file
-    elif sample_rate_file != sample_rate:
-        raise UserWarning(
-            f'sample rate of file {file} ({sample_rate_file}) does not match sample rate of first file ({sample_rate})')
-
-    frequency, power_squared = scipy.signal.welch(
-        voltage, sample_rate, nperseg=100000)
-    frequency_total = frequency
-
-    power = np.sqrt(power_squared) * 1e6        # convert to µV/sqrt(Hz)
-    powers.append(power)
-
-print(powers)
+	return power, frequency, sample_rate
 
 
-ax = plt.gca()
-lib.plotstyle.format_bode_plot(ax)
+def main():
+	pool = Pool()
+	output = pool.map(process_file, args.files)
+	pool.close()
+	pool.join()
 
-ax.plot(frequency_total, np.mean(powers, axis=0), label='file', alpha=0.7)
+	power, frequency, sample_rate = zip(*output)
 
-plt.show()
+	if sample_rate.count(sample_rate[0]) != len(sample_rate):
+		print('files have different saple rates!')
+		exit(1)
+
+	voltage = np.sqrt(np.mean(power, axis=0))
+	frequency = frequency[0]
+
+	ax = plt.gca()
+	lib.plotstyle.format_bode_plot(ax)
+	ax.set_title(args.files)
+
+	ax.plot(frequency, voltage * 1e6)
+
+	if args.output:
+		plt.savefig(args.output)
+	else:
+		plt.show()
+
+
+if __name__ == "__main__":
+	main()
