@@ -20,16 +20,15 @@ parser.add_argument('--output', type=str,
 
 args = parser.parse_args()
 
-voltage_in, sample_rate_in, length_in = lib.tekdecode.loadFile(args.chInput)
+voltage_in, sample_rate, length = lib.tekdecode.loadFile(args.chInput)
 voltage_out, sample_rate_out, length_out = lib.tekdecode.loadFile(
 	args.chOutput)
 
-if sample_rate_in != sample_rate_out:
+if sample_rate != sample_rate_out:
 	print('files have different sample rates')
 	exit(1)
-sample_rate = sample_rate
 
-if length_in != length_out:
+if length != length_out:
 	print('files have different lengths')
 	exit(1)
 
@@ -39,17 +38,82 @@ def sine(t, amplitude, ang_frequency, phi, offset):
 
 
 def fitsine(T, U, freq):
+	if len(T) > 4000:
+		T = scipy.signal.decimate(T, int(len(T) / 2000), zero_phase=True)
+		U = scipy.signal.decimate(U, int(len(U) / 2000), zero_phase=True)
+
 	maxU = np.max(np.abs(U))
 	if maxU == 0:
 		maxU = 0.01
-	guess = [maxU, 2 * np.pi * freq, 0, 0]  # amplitude, frequency, phase, offset
+	# amplitude, frequency, phase, offset
+	guess = [maxU, 2 * np.pi * freq, 2 * np.pi, 0]
 	bounds = (
-		[0, 2 * np.pi * freq * 0.8, 0, -2],
-		[maxU * 1.1, 2 * np.pi * freq * 1.2, 2 * np.pi, 2])
+		[maxU * 0.7, 2 * np.pi * freq * 0.7, 0, -0.1],
+		[maxU * 1.1, 2 * np.pi * freq / 0.7, 2 * 2 * np.pi, 0.1])
 	result = scipy.optimize.curve_fit(sine, T, U, guess, bounds=bounds)
 	(amplitude, ang_frequency, phi, offset), pconv = result
 	return amplitude, ang_frequency / (2 * np.pi), phi, offset
 
 
-minf = 1000
-maxf = 500000
+points = 500
+
+minf = 1e3
+maxf = 500e3
+
+
+def approx_freq(sample_index):
+	# see https://www.batronix.com/pdf/Rigol/UserGuide/DG1000Z_UserGuide_EN.pdf page 109
+	P = 10**(np.log10(maxf / minf) / (length / sample_rate))
+	T = (sample_index / sample_rate) + np.log10(minf) / np.log10(P)
+	return P**T
+
+
+cutoff_indices = length / 50
+
+# output arrays
+F = []
+A = []
+Phi = []
+
+for index_center in np.linspace(cutoff_indices, length - cutoff_indices, points):
+	index_center = int(index_center)
+	# use approx 3 periods of the signal
+	slice_length = int(3 * sample_rate / approx_freq(index_center))
+
+	index_start = index_center - int(slice_length / 2)
+	index_end = index_start + slice_length
+
+	T = np.arange(0, slice_length) / sample_rate
+	U_in = voltage_in[index_start: index_end]
+	U_out = voltage_out[index_start: index_end]
+
+	amplitude_in, frequency_in, phi_in, offset_in = fitsine(
+		T, U_in, approx_freq(index_center))
+	amplitude_out, frequency_out, phi_out, offset_out = fitsine(
+		T, U_out, frequency_in)
+
+	print(f'fapprox: {approx_freq(index_center)}')
+	print(f'center: {index_center}')
+	print(f'amplitudes: {amplitude_in} -> {amplitude_out}')
+	print(f'frequ: {frequency_in} -> {frequency_out}')
+	print(f'phase: {phi_in} -> {phi_out}')
+	print(f'offset: {offset_in} -> {offset_out}')
+
+	F.append(frequency_in)
+	A.append(amplitude_out / amplitude_in)
+	Phi.append(phi_out - phi_in)
+
+	# plt.plot(T, U_in, 'k+')
+	# plt.plot(T, U_out, 'k+')
+	# plt.plot(T, sine(T, amplitude_in, frequency_in
+    #               * 2 * np.pi, phi_in, offset_in))
+	# plt.plot(T, sine(T, amplitude_out, frequency_out
+    #               * 2 * np.pi, phi_out, offset_out))
+	# plt.show()
+
+plt.plot(F, A)
+plt.grid(which='both')
+axis = plt.gca()
+axis.set_xscale("log", nonposx='clip')
+axis.set_yscale("log", nonposy='clip')
+plt.show()
