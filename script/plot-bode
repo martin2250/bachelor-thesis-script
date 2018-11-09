@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import argparse
 import time
+from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -40,18 +41,21 @@ parser.add_argument('--output_table',
 args = parser.parse_args()
 
 
-def report_duration(event, start_time):
+time_start = time.time()
+
+
+def report_duration(event):
+    global time_start
     if args.stopwatch:
-        print(f'time spent in {event}: {time.time() - start_time:0.1f}s')
+        print(f'time spent {event}: {time.time() - time_start:0.1f}s')
+    time_start = time.time()
 
-
-time_load_file_start = time.time()
 
 voltage_in, sample_rate, length = lib.tekdecode.loadFile(args.chInput)
 voltage_out, sample_rate_out, length_out = lib.tekdecode.loadFile(
     args.chOutput)
 
-report_duration('load files', time_load_file_start)
+report_duration('loading files')
 
 if sample_rate != sample_rate_out:
     print('files have different sample rates')
@@ -63,13 +67,14 @@ if length != length_out:
 
 if args.invert:
     voltage_out = -voltage_out
+    report_duration('inverting output channel')
 
 
 def sine(t, amplitude, angular_frequency, phase, offset):
     return amplitude * np.sin(angular_frequency * t - phase) + offset
 
 
-def fitsine(T, U, frequ_approx):
+def fitsine(T, U, freq_approx):
     try:
         downsample_factor = 1  # int(len(T) / 2000)
 
@@ -95,7 +100,7 @@ def fitsine(T, U, frequ_approx):
 
         amplitude, angular_frequency, phase, offset = result
         return amplitude, angular_frequency / (2 * np.pi), phase, offset
-    except:
+    except Exception as e:
         return None
 
 
@@ -118,12 +123,11 @@ def get_slice_length(frequency):
     return int(args.periods * sample_rate / frequency)
 
 
-# output arrays
-F = []
-A = []
-Phi = []
+center_indexes = np.linspace(get_slice_length(
+    args.freq_start), length - get_slice_length(args.freq_stop), args.points).astype(int)
 
-for index_center in np.linspace(get_slice_length(args.freq_start), length - get_slice_length(args.freq_stop), args.points).astype(int):
+
+def center_index_to_results(index_center):
     freq_approx = approx_freq(index_center)
     slice_length = get_slice_length(freq_approx)
 
@@ -139,6 +143,22 @@ for index_center in np.linspace(get_slice_length(args.freq_start), length - get_
     result_out = fitsine(
         T, U_out, freq_approx)
 
+    return result_in, result_out
+
+
+pool = Pool()
+results = pool.map(center_index_to_results, list(center_indexes))
+pool.close()
+pool.join()
+
+report_duration('fitting sine to data')
+
+# output arrays
+F = []
+A = []
+Phi = []
+
+for (result_in, result_out) in results:
     if result_in is None or result_out is None:
         continue
 
@@ -167,6 +187,15 @@ for index_center in np.linspace(get_slice_length(args.freq_start), length - get_
         plt.legend(loc=1)
         plt.show()
 
+report_duration('creating final output values')
+
+if args.output_table:
+    with open(args.output_table, 'w') as file:
+        file.write('# frequency (Hz), gain (V/V), phase (rad)')
+        for (f, g, phi) in zip(F, A, Phi):
+            file.write(f'{f:0.1f}\t{g:0.3e}\t{phi:0.2f}\n')
+
+            report_duration('writing values to table')
 
 axis = plt.gca()
 axis2 = axis.twinx()
@@ -183,13 +212,8 @@ lns = ln_gain + ln_phase
 labs = [l.get_label() for l in lns]
 axis.legend(lns, labs, loc=0)
 
-if args.output_table:
-    with open(args.output_table, 'w') as file:
-        file.write('# frequency (Hz), gain (V/V), phase (rad)')
-        for (f, g, phi) in zip(F, A, Phi):
-            file.write(f'{f:0.1f}\t{g:0.3e}\t{phi:0.2f}\n')
-
 if args.output:
     plt.savefig(args.output)
+    report_duration('saving plot')
 else:
     plt.show()
