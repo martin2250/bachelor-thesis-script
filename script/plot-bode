@@ -2,8 +2,8 @@
 import argparse
 
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
+import scipy.optimize
 import scipy.signal
 
 import lib.plotstyle
@@ -26,12 +26,12 @@ parser.add_argument('--periods', type=float, default=3,
                     help='number of sine periods to use for each frequency')
 parser.add_argument('--show_fits', action='store_true',
                     help='show fit for every point')
+parser.add_argument('--invert', action='store_true',
+                    help='invert output signal')
 parser.add_argument('--output',
                     help='plot output file')
 
 args = parser.parse_args()
-
-print(args)
 
 voltage_in, sample_rate, length = lib.tekdecode.loadFile(args.chInput)
 voltage_out, sample_rate_out, length_out = lib.tekdecode.loadFile(
@@ -45,27 +45,42 @@ if length != length_out:
     print('files have different lengths')
     exit(1)
 
+if args.invert:
+    voltage_out = -voltage_out
 
-def sine(t, amplitude, ang_frequency, phi, offset):
-    return amplitude * np.sin(ang_frequency * t - phi) + offset
+
+def sine(t, amplitude, angular_frequency, phase, offset):
+    return amplitude * np.sin(angular_frequency * t - phase) + offset
 
 
-def fitsine(T, U, freq):
-    if len(T) > 4000:
-        T = scipy.signal.decimate(T, int(len(T) / 2000), zero_phase=True)
-        U = scipy.signal.decimate(U, int(len(U) / 2000), zero_phase=True)
+def fitsine(T, U, frequ_approx):
+    try:
+        downsample_factor = 1  # int(len(T) / 2000)
 
-    maxU = np.max(np.abs(U))
-    if maxU == 0:
-        maxU = 0.01
-    # amplitude, frequency, phase, offset
-    guess = [maxU, 2 * np.pi * freq, 2 * np.pi, 0]
-    bounds = (
-        [maxU * 0.7, 2 * np.pi * freq * 0.7, 0, -0.1],
-        [maxU * 1.1, 2 * np.pi * freq / 0.7, 2 * 2 * np.pi, 0.1])
-    result = scipy.optimize.curve_fit(sine, T, U, guess, bounds=bounds)
-    (amplitude, ang_frequency, phi, offset), pconv = result
-    return amplitude, ang_frequency / (2 * np.pi), phi, offset
+        if downsample_factor > 1:
+            T = scipy.signal.decimate(T, downsample_factor, zero_phase=True)
+            U = scipy.signal.decimate(U, downsample_factor, zero_phase=True)
+
+        amplitude_max = np.max(np.abs(U)) or 0.01
+        angular_frequency_approx = 2 * np.pi * freq_approx
+
+        def sine_phase(t, phase):
+            return amplitude_max * np.sin(angular_frequency_approx * t - phase)
+
+        (phase_approx), _ = scipy.optimize.curve_fit(
+            sine_phase, T, U, [0], bounds=([- np.pi], [np.pi]))
+
+        # do proper fit
+        guess = [amplitude_max, angular_frequency_approx, phase_approx, 0]
+        bounds = (
+            [amplitude_max * 0.7, angular_frequency_approx * 0.5, -np.pi, -0.1],
+            [amplitude_max, angular_frequency_approx / 0.5, np.pi, 0.1])
+        result, _ = scipy.optimize.curve_fit(sine, T, U, guess, bounds=bounds)
+
+        amplitude, angular_frequency, phase, offset = result
+        return amplitude, angular_frequency / (2 * np.pi), phase, offset
+    except:
+        return None
 
 
 def approx_freq_rigol_log(sample_index):
@@ -103,37 +118,53 @@ for index_center in np.linspace(get_slice_length(args.freq_start), length - get_
     U_in = voltage_in[index_start: index_end]
     U_out = voltage_out[index_start: index_end]
 
-    amplitude_in, frequency_in, phi_in, offset_in = fitsine(
-        T, U_in, approx_freq(index_center))
-    amplitude_out, frequency_out, phi_out, offset_out = fitsine(
-        T, U_out, frequency_in)
+    result_in = fitsine(
+        T, U_in, freq_approx)
+    result_out = fitsine(
+        T, U_out, freq_approx)
 
-    print(f'fapprox: {approx_freq(index_center)}')
-    print(f'center: {index_center}')
-    print(f'amplitudes: {amplitude_in} -> {amplitude_out}')
-    print(f'frequ: {frequency_in} -> {frequency_out}')
-    print(f'phase: {phi_in} -> {phi_out}')
-    print(f'offset: {offset_in} -> {offset_out}')
+    if result_in is None or result_out is None:
+        continue
 
-    F.append(frequency_in)
-    A.append(amplitude_out / amplitude_in)
-    Phi.append(phi_out - phi_in)
+    F.append(result_in[1])
+    A.append(result_out[0] / result_in[0])
+
+    phi = result_in[2] - result_out[2]
+    if phi < -np.pi:
+        phi += 2 * np.pi
+    if phi > np.pi:
+        phi -= 2 * np.pi
+    Phi.append(phi)
 
     if args.show_fits:
-        plt.plot(T, U_in, '+', color='C1',
-                 label=f'input, fit:\nf: {frequency_in:0.1f} Hz\nA: {amplitude_in:0.3f} Vpp')
-        plt.plot(T, U_out, '+', color='C2',
-                 label=f'output, fit:\nf: {frequency_out:0.1f} Hz\nA: {amplitude_out:0.3f} Vpp')
-        plt.plot(T, sine(T, amplitude_in, frequency_in
-                         * 2 * np.pi, phi_in, offset_in), color='black')
-        plt.plot(T, sine(T, amplitude_out, frequency_out
-                         * 2 * np.pi, phi_out, offset_out), color='black')
-        plt.legend(loc=0)
+        def plot_curve(U, result, color):
+            amplitude, frequency, phase, offset = result
+
+            plt.plot(T, U, '+', color=color,
+                     label=f'input, fit:\nf: {frequency:0.1f} Hz\nA: {amplitude:0.3f} Vpp')
+            plt.plot(T, sine(T, amplitude, frequency
+                             * 2 * np.pi, phase, offset), color= 'black')
+
+        plot_curve(U_in, result_in, 'C1')
+        plot_curve(U_out, result_out, 'C2')
+
+        plt.legend(loc=1)
         plt.show()
 
-plt.plot(F, A)
-plt.grid(which='both')
+
 axis = plt.gca()
+axis2 = axis.twinx()
+axis2.set_ylim(-np.pi / 2, np.pi / 2)
+
+ln_gain = axis.plot(F, A, '+', label='gain', color='C1')
+ln_phase = axis2.plot(F, Phi, '+', label='phase', color='C2')
+
+axis.grid(which='both')
 axis.set_xscale("log", nonposx='clip')
 axis.set_yscale("log", nonposy='clip')
+
+lns = ln_gain + ln_phase
+labs = [l.get_label() for l in lns]
+axis.legend(lns, labs, loc=0)
+
 plt.show()
