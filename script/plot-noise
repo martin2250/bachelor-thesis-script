@@ -11,9 +11,11 @@ import lib.plotstyle
 import lib.tekdecode
 
 parser = argparse.ArgumentParser(
-	description='generates power density plots from time-domain oscilloscope data')
+    description='generates power density plots from time-domain oscilloscope data')
 parser.add_argument('files', metavar='input_file', type=str, nargs='+',
                     help='csv/isf files from Tektronix scope')
+parser.add_argument('--resolution', type=int,
+                    help='fft resolution', default=100000)
 parser.add_argument('--output', type=str,
                     help='output file')
 
@@ -21,40 +23,40 @@ args = parser.parse_args()
 
 
 def process_file(file):
-	voltage, sample_rate, length = lib.tekdecode.loadFile(file)
+    voltage, sample_rate, length = lib.tekdecode.loadFile(file)
 
-	frequency, power = scipy.signal.welch(
-		voltage, sample_rate, nperseg=100000)
+    frequency, power = scipy.signal.welch(
+        voltage, sample_rate, nperseg=args.resolution)
 
-	return power, frequency, sample_rate
+    return power, frequency, sample_rate
 
 
 def main():
-	pool = Pool()
-	output = pool.map(process_file, args.files)
-	pool.close()
-	pool.join()
+    pool = Pool()
+    output = pool.map(process_file, args.files)
+    pool.close()
+    pool.join()
 
-	power, frequency, sample_rate = zip(*output)
+    power, frequency, sample_rate = zip(*output)
 
-	if sample_rate.count(sample_rate[0]) != len(sample_rate):
-		print('files have different saple rates!')
-		exit(1)
+    if sample_rate.count(sample_rate[0]) != len(sample_rate):
+        print('files have different saple rates!')
+        exit(1)
 
-	voltage = np.sqrt(np.mean(power, axis=0))
-	frequency = frequency[0]
+    voltage = np.sqrt(np.mean(power, axis=0))
+    frequency = frequency[0]
 
-	ax = plt.gca()
-	lib.plotstyle.format_bode_plot(ax)
-	ax.set_title(args.files)
+    ax = plt.gca()
+    lib.plotstyle.format_bode_plot(ax)
+    ax.set_title(args.files)
 
-	ax.plot(frequency, voltage * 1e6)
+    ax.plot(frequency, voltage * 1e6)
 
-	if args.output:
-		plt.savefig(args.output)
-	else:
-		plt.show()
+    if args.output:
+        plt.savefig(args.output)
+    else:
+        plt.show()
 
 
 if __name__ == "__main__":
-	main()
+    main()
