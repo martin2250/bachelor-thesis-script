@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import argparse
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,14 +29,29 @@ parser.add_argument('--show_fits', action='store_true',
                     help='show fit for every point')
 parser.add_argument('--invert', action='store_true',
                     help='invert output signal')
+parser.add_argument('--stopwatch', action='store_true',
+                    help='show time required for different operations')
 parser.add_argument('--output',
                     help='plot output file')
+parser.add_argument('--output_table',
+                    help='table output file')
+
 
 args = parser.parse_args()
+
+
+def report_duration(event, start_time):
+    if args.stopwatch:
+        print(f'time spent in {event}: {time.time() - start_time:0.1f}s')
+
+
+time_load_file_start = time.time()
 
 voltage_in, sample_rate, length = lib.tekdecode.loadFile(args.chInput)
 voltage_out, sample_rate_out, length_out = lib.tekdecode.loadFile(
     args.chOutput)
+
+report_duration('load files', time_load_file_start)
 
 if sample_rate != sample_rate_out:
     print('files have different sample rates')
@@ -167,4 +183,13 @@ lns = ln_gain + ln_phase
 labs = [l.get_label() for l in lns]
 axis.legend(lns, labs, loc=0)
 
-plt.show()
+if args.output_table:
+    with open(args.output_table, 'w') as file:
+        file.write('# frequency (Hz), gain (V/V), phase (rad)')
+        for (f, g, phi) in zip(F, A, Phi):
+            file.write(f'{f:0.1f}\t{g:0.3e}\t{phi:0.2f}\n')
+
+if args.output:
+    plt.savefig(args.output)
+else:
+    plt.show()
