@@ -59,12 +59,13 @@ def loadFileISF(filename):
 
     fmt = {'MSB': '>', 'LSB': '<'}[head['BYT_OR'][0]] + str(length) + 'h'
 
-    if data_length != struct.calcsize(fmt):
-        raise UserWarning(
-            f'data length ({data_length}) does not match number of samples ({length})')
+    Y = np.frombuffer(data, dtype=np.dtype('>i2'))
 
-    Y = np.array(struct.unpack(fmt, data))
-    Y = (Y - y_offset) * y_factor + y_zero
+    if len(Y) != length:
+        raise UserWarning(
+            f'data length ({len(Y)}) does not match number of samples ({length})')
+
+    Y = (Y.astype(np.float) - y_offset) * y_factor + y_zero
 
     return Y, sample_rate, length
 
