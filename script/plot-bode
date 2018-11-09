@@ -10,106 +10,126 @@ import lib.plotstyle
 import lib.tekdecode
 
 parser = argparse.ArgumentParser(
-	description='generates bode plots from time-domain oscilloscope data')
-parser.add_argument('chInput', metavar='file', type=str,
+    description='generates bode plots from time-domain oscilloscope data')
+parser.add_argument('chInput',
                     help='file that contains the amplifier input')
-parser.add_argument('chOutput', metavar='file', type=str,
+parser.add_argument('chOutput',
                     help='file that contains the amplifier output')
-parser.add_argument('--output', type=str,
+parser.add_argument('freq_start', type=float,
+                    help='sweep start frequency')
+parser.add_argument('freq_stop', type=float,
+                    help='sweep stop frequency')
+parser.add_argument('--sweep-type', choices=['rigol-log', 'linear'],
+                    default='rigol-log', help='sweep type to estimate frequency')
+parser.add_argument('--points', type=int, default=100, help='number of points')
+parser.add_argument('--periods', type=float, default=3,
+                    help='number of sine periods to use for each frequency')
+parser.add_argument('--show_fits', action='store_true',
+                    help='show fit for every point')
+parser.add_argument('--output',
                     help='plot output file')
 
 args = parser.parse_args()
 
+print(args)
+
 voltage_in, sample_rate, length = lib.tekdecode.loadFile(args.chInput)
 voltage_out, sample_rate_out, length_out = lib.tekdecode.loadFile(
-	args.chOutput)
+    args.chOutput)
 
 if sample_rate != sample_rate_out:
-	print('files have different sample rates')
-	exit(1)
+    print('files have different sample rates')
+    exit(1)
 
 if length != length_out:
-	print('files have different lengths')
-	exit(1)
+    print('files have different lengths')
+    exit(1)
 
 
 def sine(t, amplitude, ang_frequency, phi, offset):
-	return amplitude * np.sin(ang_frequency * t - phi) + offset
+    return amplitude * np.sin(ang_frequency * t - phi) + offset
 
 
 def fitsine(T, U, freq):
-	if len(T) > 4000:
-		T = scipy.signal.decimate(T, int(len(T) / 2000), zero_phase=True)
-		U = scipy.signal.decimate(U, int(len(U) / 2000), zero_phase=True)
+    if len(T) > 4000:
+        T = scipy.signal.decimate(T, int(len(T) / 2000), zero_phase=True)
+        U = scipy.signal.decimate(U, int(len(U) / 2000), zero_phase=True)
 
-	maxU = np.max(np.abs(U))
-	if maxU == 0:
-		maxU = 0.01
-	# amplitude, frequency, phase, offset
-	guess = [maxU, 2 * np.pi * freq, 2 * np.pi, 0]
-	bounds = (
-		[maxU * 0.7, 2 * np.pi * freq * 0.7, 0, -0.1],
-		[maxU * 1.1, 2 * np.pi * freq / 0.7, 2 * 2 * np.pi, 0.1])
-	result = scipy.optimize.curve_fit(sine, T, U, guess, bounds=bounds)
-	(amplitude, ang_frequency, phi, offset), pconv = result
-	return amplitude, ang_frequency / (2 * np.pi), phi, offset
-
-
-points = 500
-
-minf = 1e3
-maxf = 500e3
+    maxU = np.max(np.abs(U))
+    if maxU == 0:
+        maxU = 0.01
+    # amplitude, frequency, phase, offset
+    guess = [maxU, 2 * np.pi * freq, 2 * np.pi, 0]
+    bounds = (
+        [maxU * 0.7, 2 * np.pi * freq * 0.7, 0, -0.1],
+        [maxU * 1.1, 2 * np.pi * freq / 0.7, 2 * 2 * np.pi, 0.1])
+    result = scipy.optimize.curve_fit(sine, T, U, guess, bounds=bounds)
+    (amplitude, ang_frequency, phi, offset), pconv = result
+    return amplitude, ang_frequency / (2 * np.pi), phi, offset
 
 
-def approx_freq(sample_index):
-	# see https://www.batronix.com/pdf/Rigol/UserGuide/DG1000Z_UserGuide_EN.pdf page 109
-	P = 10**(np.log10(maxf / minf) / (length / sample_rate))
-	T = (sample_index / sample_rate) + np.log10(minf) / np.log10(P)
-	return P**T
+def approx_freq_rigol_log(sample_index):
+    # see https://www.batronix.com/pdf/Rigol/UserGuide/DG1000Z_UserGuide_EN.pdf page 109
+    P = 10**(np.log10(args.freq_stop / args.freq_start) / (length / sample_rate))
+    T = (sample_index / sample_rate) + np.log10(args.freq_start) / np.log10(P)
+    return P**T
 
 
-cutoff_indices = length / 50
+def approx_freq_linear(sample_index):
+    return args.freq_start + (args.freq_stop - args.freq_start) * (sample_index / length)
+
+
+approx_freq = {'rigol-log': approx_freq_rigol_log,
+               'linear': approx_freq_linear}[args.sweep_type]
+
+
+def get_slice_length(frequency):
+    return int(args.periods * sample_rate / frequency)
+
 
 # output arrays
 F = []
 A = []
 Phi = []
 
-for index_center in np.linspace(cutoff_indices, length - cutoff_indices, points):
-	index_center = int(index_center)
-	# use approx 3 periods of the signal
-	slice_length = int(3 * sample_rate / approx_freq(index_center))
+for index_center in np.linspace(get_slice_length(args.freq_start), length - get_slice_length(args.freq_stop), args.points).astype(int):
+    freq_approx = approx_freq(index_center)
+    slice_length = get_slice_length(freq_approx)
 
-	index_start = index_center - int(slice_length / 2)
-	index_end = index_start + slice_length
+    index_start = index_center - int(slice_length / 2)
+    index_end = index_start + slice_length
 
-	T = np.arange(0, slice_length) / sample_rate
-	U_in = voltage_in[index_start: index_end]
-	U_out = voltage_out[index_start: index_end]
+    T = np.arange(0, slice_length) / sample_rate
+    U_in = voltage_in[index_start: index_end]
+    U_out = voltage_out[index_start: index_end]
 
-	amplitude_in, frequency_in, phi_in, offset_in = fitsine(
-		T, U_in, approx_freq(index_center))
-	amplitude_out, frequency_out, phi_out, offset_out = fitsine(
-		T, U_out, frequency_in)
+    amplitude_in, frequency_in, phi_in, offset_in = fitsine(
+        T, U_in, approx_freq(index_center))
+    amplitude_out, frequency_out, phi_out, offset_out = fitsine(
+        T, U_out, frequency_in)
 
-	print(f'fapprox: {approx_freq(index_center)}')
-	print(f'center: {index_center}')
-	print(f'amplitudes: {amplitude_in} -> {amplitude_out}')
-	print(f'frequ: {frequency_in} -> {frequency_out}')
-	print(f'phase: {phi_in} -> {phi_out}')
-	print(f'offset: {offset_in} -> {offset_out}')
+    print(f'fapprox: {approx_freq(index_center)}')
+    print(f'center: {index_center}')
+    print(f'amplitudes: {amplitude_in} -> {amplitude_out}')
+    print(f'frequ: {frequency_in} -> {frequency_out}')
+    print(f'phase: {phi_in} -> {phi_out}')
+    print(f'offset: {offset_in} -> {offset_out}')
 
-	F.append(frequency_in)
-	A.append(amplitude_out / amplitude_in)
-	Phi.append(phi_out - phi_in)
+    F.append(frequency_in)
+    A.append(amplitude_out / amplitude_in)
+    Phi.append(phi_out - phi_in)
 
-	# plt.plot(T, U_in, 'k+')
-	# plt.plot(T, U_out, 'k+')
-	# plt.plot(T, sine(T, amplitude_in, frequency_in
-    #               * 2 * np.pi, phi_in, offset_in))
-	# plt.plot(T, sine(T, amplitude_out, frequency_out
-    #               * 2 * np.pi, phi_out, offset_out))
-	# plt.show()
+    if args.show_fits:
+        plt.plot(T, U_in, '+', color='C1',
+                 label=f'input, fit:\nf: {frequency_in:0.1f} Hz\nA: {amplitude_in:0.3f} Vpp')
+        plt.plot(T, U_out, '+', color='C2',
+                 label=f'output, fit:\nf: {frequency_out:0.1f} Hz\nA: {amplitude_out:0.3f} Vpp')
+        plt.plot(T, sine(T, amplitude_in, frequency_in
+                         * 2 * np.pi, phi_in, offset_in), color='black')
+        plt.plot(T, sine(T, amplitude_out, frequency_out
+                         * 2 * np.pi, phi_out, offset_out), color='black')
+        plt.legend(loc=0)
+        plt.show()
 
 plt.plot(F, A)
 plt.grid(which='both')
