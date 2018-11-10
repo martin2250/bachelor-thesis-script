@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import argparse
 import time
+from dataclasses import dataclass
 from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
@@ -12,208 +13,290 @@ import lib.plotstyle
 import lib.tekdecode
 
 parser = argparse.ArgumentParser(
-    description='generates bode plots from time-domain oscilloscope data')
-parser.add_argument('chInput',
-                    help='file that contains the amplifier input')
-parser.add_argument('chOutput',
-                    help='file that contains the amplifier output')
-parser.add_argument('freq_start', type=float,
-                    help='sweep start frequency')
-parser.add_argument('freq_stop', type=float,
-                    help='sweep stop frequency')
-parser.add_argument('--sweep-type', choices=['rigol-log', 'linear'],
-                    default='rigol-log', help='sweep type to estimate frequency')
-parser.add_argument('--points', type=int, default=100, help='number of points')
-parser.add_argument('--periods', type=float, default=3,
-                    help='number of sine periods to use for each frequency')
-parser.add_argument('--show_fits', action='store_true',
-                    help='show fit for every point')
-parser.add_argument('--invert', action='store_true',
-                    help='invert output signal')
+	description='generates bode plots from time-domain oscilloscope data')
+
+subparsers = parser.add_subparsers(
+	help='input from scope file or table', dest='input_type')
+
+################################################################################
+
+parser_scope = subparsers.add_parser(
+	'scope', help='read data from scope files')
+parser_scope.add_argument('scope_data_input', metavar='scope-data-input',
+                          help='file that contains the amplifier input')
+parser_scope.add_argument('scope_data_output', metavar='scope-data-output',
+                          help='file that contains the amplifier output')
+parser_scope.add_argument('freq_start', metavar='freq-start', type=float,
+                          help='sweep start frequency')
+parser_scope.add_argument('freq_stop', metavar='freq-stop', type=float,
+                          help='sweep stop frequency')
+parser_scope.add_argument('--sweep-type', choices=['rigol-log', 'linear'],
+                          default='rigol-log',
+                          help='sweep type to estimate frequency')
+parser_scope.add_argument('--points', type=int, default=100,
+                          help='number of points')
+parser_scope.add_argument('--periods', type=float, default=3,
+                          help='number of sine periods to use for each frequency')
+parser_scope.add_argument('--show-fits', action='store_true',
+                          help='show fit for every point')
+parser_scope.add_argument('--invert', action='store_true',
+                          help='invert output signal')
+
+################################################################################
+
+parser_table = subparsers.add_parser(
+	'table', help='read data from previously generated table')
+parser_table.add_argument('data_file', metavar='data-file',
+                          help='file that contains the table')
+
+################################################################################
+
 parser.add_argument('--stopwatch', action='store_true',
                     help='show time required for different operations')
+parser.add_argument('--gain-axis', choices=['ratio', 'dB'], default='ratio',
+                    help='how to plot gain')
+parser.add_argument('--phase-axis', choices=['rad', 'deg'], default='rad',
+                    help='how to plot phase')
 parser.add_argument('--output',
                     help='plot output file')
-parser.add_argument('--output_table',
+parser.add_argument('--output-table',
                     help='table output file')
 
+################################################################################
 
 args = parser.parse_args()
 
+################################################################################
 
 time_start = time.time()
 
 
 def report_duration(event):
-    global time_start
-    if args.stopwatch:
-        print(f'time spent {event}: {time.time() - time_start:0.1f}s')
-    time_start = time.time()
+	global time_start
+	if args.stopwatch:
+		print(f'time spent {event}: {time.time() - time_start:0.1f}s')
+	time_start = time.time()
+
+################################################################################
 
 
-voltage_in, sample_rate, length = lib.tekdecode.loadFile(args.chInput)
-voltage_out, sample_rate_out, length_out = lib.tekdecode.loadFile(
-    args.chOutput)
+if args.input_type == 'scope':
 
-report_duration('loading files')
+	############################################################################
 
-if sample_rate != sample_rate_out:
-    print('files have different sample rates')
-    exit(1)
+	voltage_in, sample_rate, length = lib.tekdecode.loadFile(
+		args.scope_data_input)
+	voltage_out, sample_rate_out, length_out = lib.tekdecode.loadFile(
+		args.scope_data_output)
 
-if length != length_out:
-    print('files have different lengths')
-    exit(1)
+	report_duration('loading files')
 
-if args.invert:
-    voltage_out = -voltage_out
-    report_duration('inverting output channel')
+	############################################################################
 
+	if sample_rate != sample_rate_out:
+		print('files have different sample rates')
+		exit(1)
 
-def sine(t, amplitude, angular_frequency, phase, offset):
-    return amplitude * np.sin(angular_frequency * t - phase) + offset
+	if length != length_out:
+		print('files have different lengths')
+		exit(1)
 
+	if args.invert:
+		voltage_out = -voltage_out
+		report_duration('inverting output channel')
 
-def fitsine(T, U, freq_approx):
-    try:
-        downsample_factor = 1  # int(len(T) / 2000)
+	############################################################################
 
-        if downsample_factor > 1:
-            T = scipy.signal.decimate(T, downsample_factor, zero_phase=True)
-            U = scipy.signal.decimate(U, downsample_factor, zero_phase=True)
+	@dataclass
+	class FitResult:
+		frequency: float
+		amplitude: float
+		phase: float
+		offset: float
+		time: np.array
+		voltage: np.array
 
-        amplitude_max = np.max(np.abs(U)) or 0.01
-        angular_frequency_approx = 2 * np.pi * freq_approx
+	def sine(t, amplitude, angular_frequency, phase, offset):
+		return amplitude * np.sin(angular_frequency * t - phase) + offset
 
-        def sine_phase(t, phase):
-            return amplitude_max * np.sin(angular_frequency_approx * t - phase)
+	def fitsine(T, U, freq_approx):
+		try:
+			downsample_factor = 1  # int(len(T) / 2000)
 
-        (phase_approx), _ = scipy.optimize.curve_fit(
-            sine_phase, T, U, [0], bounds=([- np.pi], [np.pi]))
+			if downsample_factor > 1:
+				T = scipy.signal.decimate(T, downsample_factor, zero_phase=True)
+				U = scipy.signal.decimate(U, downsample_factor, zero_phase=True)
 
-        # do proper fit
-        guess = [amplitude_max, angular_frequency_approx, phase_approx, 0]
-        bounds = (
-            [amplitude_max * 0.7, angular_frequency_approx * 0.5, -np.pi, -0.1],
-            [amplitude_max, angular_frequency_approx / 0.5, np.pi, 0.1])
-        result, _ = scipy.optimize.curve_fit(sine, T, U, guess, bounds=bounds)
+			amplitude_max = np.max(np.abs(U)) or 0.01
+			angular_frequency_approx = 2 * np.pi * freq_approx
+			offset_mean = np.mean(U)
 
-        amplitude, angular_frequency, phase, offset = result
-        return amplitude, angular_frequency / (2 * np.pi), phase, offset
-    except Exception as e:
-        return None
+			def sine_phase(t, phase):
+				return amplitude_max * np.sin(angular_frequency_approx * t - phase) + offset_mean
 
+			(phase_approx), _ = scipy.optimize.curve_fit(
+				sine_phase, T, U, [0], bounds=([- np.pi], [np.pi]))
 
-def approx_freq_rigol_log(sample_index):
-    # see https://www.batronix.com/pdf/Rigol/UserGuide/DG1000Z_UserGuide_EN.pdf page 109
-    P = 10**(np.log10(args.freq_stop / args.freq_start) / (length / sample_rate))
-    T = (sample_index / sample_rate) + np.log10(args.freq_start) / np.log10(P)
-    return P**T
+			# do proper fit
+			guess = [amplitude_max, angular_frequency_approx, phase_approx, offset_mean]
+			bounds = (
+				[amplitude_max * 0.7, angular_frequency_approx * 0.5, -np.pi, -amplitude_max],
+				[amplitude_max, angular_frequency_approx / 0.5, np.pi, amplitude_max])
+			result, _ = scipy.optimize.curve_fit(sine, T, U, guess, bounds=bounds)
 
+			amplitude, angular_frequency, phase, offset = result
 
-def approx_freq_linear(sample_index):
-    return args.freq_start + (args.freq_stop - args.freq_start) * (sample_index / length)
+			return FitResult(amplitude=amplitude, frequency=angular_frequency / (2 * np.pi), phase=phase, offset=offset, time=T, voltage=U)
+		except Exception as e:
+			return None
 
+	############################################################################
 
-approx_freq = {'rigol-log': approx_freq_rigol_log,
-               'linear': approx_freq_linear}[args.sweep_type]
+	def approx_freq_rigol_log(sample_index):
+		# see https://www.batronix.com/pdf/Rigol/UserGuide/DG1000Z_UserGuide_EN.pdf page 109
+		P = 10**(np.log10(args.freq_stop / args.freq_start) / (length / sample_rate))
+		T = (sample_index / sample_rate) + np.log10(args.freq_start) / np.log10(P)
+		return P**T
 
+	def approx_freq_linear(sample_index):
+		return args.freq_start + (args.freq_stop - args.freq_start) * (sample_index / length)
 
-def get_slice_length(frequency):
-    return int(args.periods * sample_rate / frequency)
+	approx_freq = {'rigol-log': approx_freq_rigol_log,
+	               'linear': approx_freq_linear}[args.sweep_type]
 
+	############################################################################
 
-center_indexes = np.linspace(get_slice_length(
-    args.freq_start), length - get_slice_length(args.freq_stop), args.points).astype(int)
+	def get_slice_length(frequency):
+		return int(args.periods * sample_rate / frequency)
 
+	############################################################################
 
-def center_index_to_results(index_center):
-    freq_approx = approx_freq(index_center)
-    slice_length = get_slice_length(freq_approx)
+	def center_index_to_results(index_center):
+		freq_approx = approx_freq(index_center)
+		slice_length = get_slice_length(freq_approx)
 
-    index_start = index_center - int(slice_length / 2)
-    index_end = index_start + slice_length
+		index_start = index_center - int(slice_length / 2)
+		index_end = index_start + slice_length
 
-    T = np.arange(0, slice_length) / sample_rate
-    U_in = voltage_in[index_start: index_end]
-    U_out = voltage_out[index_start: index_end]
+		T = np.arange(0, slice_length) / sample_rate
+		U_in = voltage_in[index_start: index_end]
+		U_out = voltage_out[index_start: index_end]
 
-    result_in = fitsine(
-        T, U_in, freq_approx)
-    result_out = fitsine(
-        T, U_out, freq_approx)
+		result_in = fitsine(
+			T, U_in, freq_approx)
+		result_out = fitsine(
+			T, U_out, freq_approx)
 
-    return result_in, result_out
+		return result_in, result_out
 
+	############################################################################
 
-pool = Pool()
-results = pool.map(center_index_to_results, list(center_indexes))
-pool.close()
-pool.join()
+	center_indexes = np.linspace(get_slice_length(
+            args.freq_start), length - get_slice_length(args.freq_stop), args.points).astype(int)
 
-report_duration('fitting sine to data')
+	pool = Pool()
+	results = pool.map(center_index_to_results, list(center_indexes))
+	pool.close()
+	pool.join()
 
-# output arrays
-F = []
-A = []
-Phi = []
+	report_duration('fitting sine to data')
 
-for (result_in, result_out) in results:
-    if result_in is None or result_out is None:
-        continue
+	############################################################################
 
-    F.append(result_in[1])
-    A.append(result_out[0] / result_in[0])
+	# output arrays
+	Frequency = []
+	Gain = []
+	Phase = []
 
-    phi = result_in[2] - result_out[2]
-    if phi < -np.pi:
-        phi += 2 * np.pi
-    if phi > np.pi:
-        phi -= 2 * np.pi
-    Phi.append(phi)
+	for (result_in, result_out) in results:
+		if result_in is None or result_out is None:
+			continue
 
-    if args.show_fits:
-        def plot_curve(U, result, color):
-            amplitude, frequency, phase, offset = result
+		phi = result_in.phase - result_out.phase
+		if phi < -np.pi:
+			phi += 2 * np.pi
+		if phi > np.pi:
+			phi -= 2 * np.pi
 
-            plt.plot(T, U, '+', color=color,
-                     label=f'input, fit:\nf: {frequency:0.1f} Hz\nA: {amplitude:0.3f} Vpp')
-            plt.plot(T, sine(T, amplitude, frequency
-                             * 2 * np.pi, phase, offset), color= 'black')
+		Frequency.append(result_in.frequency)
+		Gain.append(result_out.amplitude / result_in.amplitude)
+		Phase.append(phi)
 
-        plot_curve(U_in, result_in, 'C1')
-        plot_curve(U_out, result_out, 'C2')
+		if args.show_fits:
+			def plot_curve(result, color, label):
+				plt.plot(result.time, result.voltage, '+', color=color,
+	                            label=f'{label}, fit:\nf: {result.frequency:0.1f} Hz\nA: {result.amplitude:0.3f} Vpp')
+				plt.plot(result.time, sine(result.time, result.amplitude, result.frequency
+                                    * 2 * np.pi, result.phase, result.offset), color= 'black')
 
-        plt.legend(loc=1)
-        plt.show()
+			plot_curve(result_in, 'C0', 'input')
+			plot_curve(result_out, 'C1', 'output')
 
-report_duration('creating final output values')
+			plt.legend(loc=1)
+			plt.show()
+
+	report_duration('creating final output values')
+
+	############################################################################
+elif args.input_type == 'table':
+	(Frequency, Gain, Phase) = np.loadtxt(args.data_file, unpack=True)
+
+################################################################################
 
 if args.output_table:
-    with open(args.output_table, 'w') as file:
-        file.write('# frequency (Hz), gain (V/V), phase (rad)')
-        for (f, g, phi) in zip(F, A, Phi):
-            file.write(f'{f:0.1f}\t{g:0.3e}\t{phi:0.2f}\n')
+	with open(args.output_table, 'w') as file:
+		file.write('# frequency (Hz), gain (V/V), phase (rad)')
+		for (f, g, phi) in zip(Frequency, Gain, Phase):
+			file.write(f'{f:0.1f}\t{g:0.3e}\t{phi:0.2f}\n')
 
-            report_duration('writing values to table')
+			report_duration('writing values to table')
 
-axis = plt.gca()
-axis2 = axis.twinx()
-axis2.set_ylim(-np.pi / 2, np.pi / 2)
+################################################################################
 
-ln_gain = axis.plot(F, A, '+', label='gain', color='C1')
-ln_phase = axis2.plot(F, Phi, '+', label='phase', color='C2')
+axis_gain = plt.gca()
+axis_gain.grid(which='both')
+axis_gain.set_xscale("log", nonposx='clip')
+axis_gain.set_xlabel('frequency (Hz)')
 
-axis.grid(which='both')
-axis.set_xscale("log", nonposx='clip')
-axis.set_yscale("log", nonposy='clip')
+if args.gain_axis == 'dB':
+	axis_gain.set_ylabel('gain (dB)')
+	Gain_plot = 20 * np.log10(Gain)
 
-lns = ln_gain + ln_phase
+elif args.gain_axis == 'ratio':
+	axis_gain.set_ylabel('gain')
+	axis_gain.set_yscale("log", nonposy='clip')
+	Gain_plot = Gain
+
+line_gain = axis_gain.plot(Frequency, Gain_plot, '+', label='gain', color='C1')
+
+################################################################################
+
+axis_phase = axis_gain.twinx()
+axis_phase.set_ylabel('phase')
+
+if args.phase_axis == 'rad':
+	axis_phase.set_ylim(-np.pi, np.pi)
+	Phase_plot = Phase
+
+elif args.phase_axis == 'deg':
+	axis_phase.set_ylim(-180, 180)
+	axis_phase.set_yticks(np.arange(-180, 181, 45, ))
+	Phase_plot = Phase * 180 / np.pi
+
+line_phase = axis_phase.plot(
+	Frequency, Phase_plot, '+', label='phase', color='C2')
+
+################################################################################
+
+lns = line_gain + line_phase
 labs = [l.get_label() for l in lns]
-axis.legend(lns, labs, loc=0)
+axis_gain.legend(lns, labs, loc=0)
+
+################################################################################
+
+report_duration('generating plot')
 
 if args.output:
-    plt.savefig(args.output)
-    report_duration('saving plot')
+	plt.savefig(args.output)
 else:
-    plt.show()
+	plt.show()

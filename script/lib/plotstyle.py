@@ -6,7 +6,7 @@ import matplotlib
 os.environ['QT_LOGGING_RULES'] = 'qt5ct.debug=false'
 
 
-def format_bode_plot(axis):
+def format_fft_plot(axis):
 	axis.set_xscale("log", nonposx='clip')
 	axis.set_yscale("log", nonposy='clip')
 	axis.grid(which='both')

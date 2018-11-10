@@ -47,7 +47,7 @@ def main():
     frequency = frequency[0]
 
     ax = plt.gca()
-    lib.plotstyle.format_bode_plot(ax)
+    lib.plotstyle.format_fft_plot(ax)
     ax.set_title(args.files)
 
     ax.plot(frequency, voltage * 1e6)
