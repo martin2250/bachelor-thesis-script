@@ -70,6 +70,14 @@ def loadFileISF(filename):
     return Y, sample_rate, length
 
 
+def loadFileMAT(filename):
+	import scipy.io
+	mat = scipy.io.loadmat(filename)
+	channel = mat[channel][:, 0]
+	sample_rate = int(1 / mat['Tinterval'][0, 0])
+	return channel, sample_rate, len(channel)
+
+
 def loadFile(filename, format=None):
     filename = os.path.abspath(filename)
     if format is None:
@@ -82,7 +90,7 @@ def loadFile(filename, format=None):
             raise UserWarning(
                 f'file type of {filename} could not be determined, use format option')
 
-    parsers = {'csv': loadFileCSV, 'isf': loadFileISF}
+    parsers = {'csv': loadFileCSV, 'isf': loadFileISF, 'mat': loadFileMAT}
 
     if not format in parsers:
         raise UserWarning(f'unknown format "{format}"')
