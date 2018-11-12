@@ -61,6 +61,8 @@ parser.add_argument('--output',
                     help='plot output file')
 parser.add_argument('--output-table',
                     help='table output file')
+parser.add_argument('--max-freq', type=float, default=float('inf'),
+                    help='frequency limit (reduces number of points)')
 
 ################################################################################
 
@@ -194,6 +196,9 @@ if args.input_type == 'scope':
 	center_indexes = np.linspace(get_slice_length(
             args.freq_start), length - get_slice_length(args.freq_stop), args.points).astype(int)
 
+	center_indexes = np.extract(approx_freq(
+		center_indexes) < args.max_freq, center_indexes)
+
 	pool = Pool()
 	results = pool.map(center_index_to_results, list(center_indexes))
 	pool.close()
@@ -240,6 +245,13 @@ if args.input_type == 'scope':
 	############################################################################
 elif args.input_type == 'table':
 	(Frequency, Gain, Phase) = np.loadtxt(args.data_file, unpack=True)
+
+################################################################################
+
+condition = Frequency < args.max_freq
+Frequency = np.extract(condition, Frequency)
+Gain = np.extract(condition, Gain)
+Phase = np.extract(condition, Phase)
 
 ################################################################################
 
