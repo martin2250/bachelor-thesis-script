@@ -55,7 +55,7 @@ parser.add_argument('--stopwatch', action='store_true',
                     help='show time required for different operations')
 parser.add_argument('--gain-axis', choices=['ratio', 'dB'], default='ratio',
                     help='how to plot gain')
-parser.add_argument('--phase-axis', choices=['rad', 'deg'], default='rad',
+parser.add_argument('--phase-axis', choices=['rad', 'deg'], default='deg',
                     help='how to plot phase')
 parser.add_argument('--output',
                     help='plot output file')
@@ -63,6 +63,8 @@ parser.add_argument('--output-table',
                     help='table output file')
 parser.add_argument('--max-freq', type=float, default=float('inf'),
                     help='frequency limit (reduces number of points)')
+parser.add_argument('--fit-gain', action='store_true',
+                    help='try to fit a low pass curve to gain')
 
 ################################################################################
 
@@ -231,14 +233,18 @@ if args.input_type == 'scope':
 			def plot_curve(result, color, label):
 				plt.plot(result.time, result.voltage, '+', color=color,
 	                            label=f'{label}, fit:\nf: {result.frequency:0.1f} Hz\nA: {result.amplitude:0.3f} Vpp')
-				plt.plot(result.time, sine(result.time, result.amplitude, result.frequency
-                                    * 2 * np.pi, result.phase, result.offset), color= 'black')
+				plt.plot(result.time, sine(result.time, result.amplitude, result.frequency *
+                                    2 * np.pi, result.phase, result.offset), color= 'black')
 
 			plot_curve(result_in, 'C0', 'input')
 			plot_curve(result_out, 'C1', 'output')
 
 			plt.legend(loc=1)
 			plt.show()
+
+	Frequency = np.array(Frequency)
+	Gain = np.array(Gain)
+	Phase = np.array(Phase)
 
 	report_duration('creating final output values')
 
@@ -255,6 +261,10 @@ Phase = np.extract(condition, Phase)
 
 ################################################################################
 
+print(f'final data points: {len(Frequency)}')
+
+################################################################################
+
 if args.output_table:
 	with open(args.output_table, 'w') as file:
 		file.write('# frequency (Hz), gain (V/V), phase (rad)')
@@ -262,6 +272,18 @@ if args.output_table:
 			file.write(f'{f:0.1f}\t{g:0.3e}\t{phi:0.2f}\n')
 
 			report_duration('writing values to table')
+
+################################################################################
+
+if args.fit_gain:
+	def lowpass(f, gain, cutoff, order):
+		return gain / (1 + f / cutoff) ** order
+
+	(gain, cutoff, order), _ = scipy.optimize.curve_fit(lowpass, Frequency,
+	                                                    Gain, (10, 10000, 1), bounds=([0, 100, 0.5], [100, 1e6, 3]))
+
+	Frequency_fit = np.linspace(np.min(Frequency), np.max(Frequency), 100)
+	Gain_fit = lowpass(Frequency_fit, gain, cutoff, order)
 
 ################################################################################
 
@@ -273,13 +295,20 @@ axis_gain.set_xlabel('frequency (Hz)')
 if args.gain_axis == 'dB':
 	axis_gain.set_ylabel('gain (dB)')
 	Gain_plot = 20 * np.log10(Gain)
+	if args.fit_gain:
+		Gain_fit_plot = 20 * np.log10(Gain_fit)
 
 elif args.gain_axis == 'ratio':
 	axis_gain.set_ylabel('gain')
 	axis_gain.set_yscale("log", nonposy='clip')
 	Gain_plot = Gain
+	if args.fit_gain:
+		Gain_fit_plot = Gain_fit
 
 line_gain = axis_gain.plot(Frequency, Gain_plot, '+', label='gain', color='C1')
+if args.fit_gain:
+	line_gain_fit = axis_gain.plot(
+		Frequency_fit, Gain_fit_plot, '-', label='gain fit', color='C0')
 
 ################################################################################
 
