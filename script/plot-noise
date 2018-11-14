@@ -18,6 +18,8 @@ parser.add_argument('--resolution', type=int,
                     help='fft resolution', default=100000)
 parser.add_argument('--output', type=str,
                     help='output file')
+parser.add_argument('--title', type=str,
+                    help='output file')
 
 args = parser.parse_args()
 

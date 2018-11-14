@@ -53,16 +53,22 @@ parser_table.add_argument('data_file', metavar='data-file',
 
 parser.add_argument('--stopwatch', action='store_true',
                     help='show time required for different operations')
+
 parser.add_argument('--gain-axis', choices=['ratio', 'dB'], default='ratio',
                     help='how to plot gain')
 parser.add_argument('--phase-axis', choices=['rad', 'deg'], default='deg',
                     help='how to plot phase')
+parser.add_argument('--title',
+                    help='plot title')
+
 parser.add_argument('--output',
                     help='plot output file')
 parser.add_argument('--output-table',
                     help='table output file')
+
 parser.add_argument('--max-freq', type=float, default=float('inf'),
                     help='frequency limit (reduces number of points)')
+
 parser.add_argument('--fit-gain', action='store_true',
                     help='try to fit a low pass curve to gain')
 
@@ -233,8 +239,8 @@ if args.input_type == 'scope':
 			def plot_curve(result, color, label):
 				plt.plot(result.time, result.voltage, '+', color=color,
 	                            label=f'{label}, fit:\nf: {result.frequency:0.1f} Hz\nA: {result.amplitude:0.3f} Vpp')
-				plt.plot(result.time, sine(result.time, result.amplitude, result.frequency *
-                                    2 * np.pi, result.phase, result.offset), color= 'black')
+				plt.plot(result.time, sine(result.time, result.amplitude, result.frequency
+                                    * 2 * np.pi, result.phase, result.offset), color= 'black')
 
 			plot_curve(result_in, 'C0', 'input')
 			plot_curve(result_out, 'C1', 'output')
@@ -332,6 +338,13 @@ line_phase = axis_phase.plot(
 lns = line_gain + line_phase
 labs = [l.get_label() for l in lns]
 axis_gain.legend(lns, labs, loc=0)
+
+if args.title:
+	plt.title(args.title)
+elif args.input_type == 'table':
+	plt.title(args.data_file)
+else:
+	plt.title(args.scope_data_input)
 
 ################################################################################
 

@@ -11,18 +11,20 @@ import lib.tekdecode
 parser = argparse.ArgumentParser(
     description='generates time-domain plots from oscilloscope data')
 parser.add_argument('file',
-                    help='csv/isf files from Tektronix scope')
+                    help='csv/isf files from Tektronix scope', nargs='+')
 
 args = parser.parse_args()
 
-voltage, sample_rate, length = lib.tekdecode.loadFile(args.file)
+for file in args.file:
 
-voltage = voltage[:100000]
+	voltage, sample_rate, length = lib.tekdecode.loadFile(file)
 
-time = np.arange(0, len(voltage)) * (1e6 / sample_rate)
-voltage *= 1e-3
+	voltage = voltage[int(len(voltage) - len(voltage) / 20):]
 
-plt.plot(time, voltage, label=args.file)
+	time = np.arange(0, len(voltage)) * (1e6 / sample_rate)
+	voltage *= 1e-3
+
+	plt.plot(time, voltage, label=file)
 plt.ylabel('stage 2 output (mV)')
 plt.xlabel('time (µs)')
 plt.legend()
