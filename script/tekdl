@@ -1,0 +1,21 @@
+#!/usr/bin/python3
+import argparse
+import os
+
+parser = argparse.ArgumentParser(
+    description='read waveform from tek oscilloscope')
+parser.add_argument('scope_ip', type=str,
+                    help='IP of scope')
+parser.add_argument('file', type=str,
+                    help='filename (contains %c wildcard for channel)')
+parser.add_argument('channels', type=str, nargs='+',
+                    help='channels to download')
+parser.add_argument('--port', type=int,
+                    help='port (normally 81)', default=81)
+
+args = parser.parse_args()
+
+
+for channel in args.channels:
+	filename = os.path.abspath(args.file.replace('%c', channel))
+	os.system(f'wget "{args.scope_ip}:{args.port}/data/data4.html?WFMFILENAME={channel}&WFMFILEEXT=isf&command=select%3Acontrol+{channel}&command1=save%3Awaveform%3Afileformat+internal&wfmsend=Get" -O "{filename}"')
