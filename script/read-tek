@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 import argparse
-
-import visa
+import socket
 
 # doc: https://www.tek.com/oscilloscope/dpo4054-manual/mso4000-and-dpo4000-series
 
@@ -10,75 +9,19 @@ import visa
 
 parser = argparse.ArgumentParser(
     description='read waveform from tek oscilloscope via USB/GPIB')
-subparsers = parser.add_subparsers(
-    help='command', dest='command')
 
-################################################################################
-
-parser_list = subparsers.add_parser(
-    'list', help='list available scopes')
-
-################################################################################
-
-parser_read = subparsers.add_parser(
-    'read', help='download current waveform')
-
-parser_read.add_argument('scope_id', type=int,
-                         help='ID, use list to show available scopes')
-parser_read.add_argument('output',
-                         help='output file pattern (must contain %c placeholder which will be replaced with the channel)')
-parser_read.add_argument('channels', nargs='+',
-                         help='which channels to save')
-
-################################################################################
-
-parser_trigger = subparsers.add_parser(
-    'trigger', help='read multiple waveforms')
-
-parser_trigger.add_argument('scope_id', type=int,
-                            help='ID, use list to show available scopes')
-parser_trigger.add_argument('output', type=str,
-                            help='output file pattern (must contain %n placeholder, which will be replaced with the first available number and %c which will be replace with the channel)')
-parser_trigger.add_argument('count', type=int,
-                            help='number of waveforms to aquire')
-parser_trigger.add_argument('channels', nargs='+',
-                            help='which channels to save')
+parser.add_argument('ip',
+                    help='scope IP address')
+parser.add_argument('channels', nargs='+',
+                    help='which channels to save')
+parser.add_argument('output',
+                    help='output file pattern (must contain %c placeholder which will be replaced with the channel, if count is used, %n will be replaced with number)')
+parser.add_argument('--count', type=int,
+                    help='number of waveforms to aquire')
 
 ################################################################################
 
 args = parser.parse_args()
-
-
-rm = visa.ResourceManager()
-devices = rm.list_resources()
-
-if args.command == 'list':
-	for id, device in enumerate(devices):
-		print(f'{id}\t{device}')
-	exit()
-
-scope = rm.open_resource(devices[args.scope_id])
-
-
-def printquery(query):
-	res = scope.query(query)
-	print(f'{query} -> {res}')
-	return res
-
-
-def get_filename(pattern, channel, numbered=False):
-	pattern = pattern.replace('%c', channel)
-
-	if numbered:
-		num = 0
-
-		def insert_number(pattern, num):
-			return pattern.replace('%n', f'{num: 04d}')
-		while os.path.exists(insert_number(pattern, num)):
-			num += 1
-		pattern = insert_number(pattern, num)
-
-	return pattern
 
 
 def read_waveform(filepattern, numbered=False):

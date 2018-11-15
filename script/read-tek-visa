@@ -1,0 +1,98 @@
+#!/usr/bin/python3
+import argparse
+
+import visa
+
+# doc: https://www.tek.com/oscilloscope/dpo4054-manual/mso4000-and-dpo4000-series
+
+
+################################################################################
+
+parser = argparse.ArgumentParser(
+    description='read waveform from tek oscilloscope via USB/GPIB')
+subparsers = parser.add_subparsers(
+    help='command', dest='command')
+
+################################################################################
+
+parser_read = subparsers.add_parser(
+    'read', help='download current waveform')
+
+parser_read.add_argument('scope_id', type=int,
+                         help='ID, use list to show available scopes')
+parser_read.add_argument('output',
+                         help='output file pattern (must contain %c placeholder which will be replaced with the channel)')
+parser_read.add_argument('channels', nargs='+',
+                         help='which channels to save')
+
+################################################################################
+
+parser_trigger = subparsers.add_parser(
+    'trigger', help='read multiple waveforms')
+
+parser_trigger.add_argument('scope_id', type=int,
+                            help='ID, use list to show available scopes')
+parser_trigger.add_argument('output', type=str,
+                            help='output file pattern (must contain %n placeholder, which will be replaced with the first available number and %c which will be replace with the channel)')
+parser_trigger.add_argument('count', type=int,
+                            help='number of waveforms to aquire')
+parser_trigger.add_argument('channels', nargs='+',
+                            help='which channels to save')
+
+################################################################################
+
+args = parser.parse_args()
+
+
+rm = visa.ResourceManager()
+scope = rm.open_resource('TCPIP::192.168.1.26::4000::SOCKET')
+
+
+def printquery(query):
+	res = scope.query(query)
+	print(f'{query} -> {res}')
+	return res
+
+
+def get_filename(pattern, channel, numbered=False):
+	pattern = pattern.replace('%c', channel)
+
+	if numbered:
+		num = 0
+
+		def insert_number(pattern, num):
+			return pattern.replace('%n', f'{num: 04d}')
+		while os.path.exists(insert_number(pattern, num)):
+			num += 1
+		pattern = insert_number(pattern, num)
+
+	return pattern
+
+
+def read_waveform(filepattern, numbered=False):
+	printquery(f'DATA:ENCDG RIBINARY')
+	for channel in args.channels:
+		printquery(f'DATA:SOURCE {channel}')
+
+		if False:
+			printquery(f'DATA:START 0')
+			printquery(f'DATA:STOP {int(20e6)}')  # 20 megapoints or less
+
+		filename = get_filename(filepattern, channel, numbered)
+
+		with open(filename, 'w') as of:
+			of.write(scope.query('CURVE?'))
+			print(f'file {filename} length: {of.tell()}')
+
+
+if args.command == 'read':
+	read_waveform(args.output)
+
+elif args.command == 'trigger':
+	printquery('ACQUIRE:STOPAFTER SEQUENCE')
+	for i in range(args.count):
+		printquery('ACQUIRE:STATE RUN')
+		printquery('TRIGGER')
+		while printquery('ACQUIRE:STATE?') != ':ACQUIRE:STATE 0':
+			time.sleep(1)
+		read_waveform(args.output, True)
