@@ -44,8 +44,9 @@ def loadFileISF(filename, channel):
 	data = content[hashpos + 2 + digits:]
 
 	if len(data) != data_length:
-		raise UserWarning(
-			f'file length ({len(data)}) does not match stated length ({data_length})')
+		print('length doesn\'t match')
+		# raise UserWarning(
+		#	f'file length ({len(data)}) does not match stated length ({data_length})')
 
 	if int(head['BIT_NR'][0]) != 16:
 		raise UserWarning(
@@ -62,8 +63,10 @@ def loadFileISF(filename, channel):
 	Y = np.frombuffer(data, dtype=np.dtype('>i2'))
 
 	if len(Y) != length:
-		raise UserWarning(
-			f'data length ({len(Y)}) does not match number of samples ({length})')
+		Y = Y[:length]
+		print('cropped length')
+		# raise UserWarning(
+	#		f'data length ({len(Y)}) does not match number of samples ({length})')
 
 	Y = (Y.astype(np.float) - y_offset) * y_factor + y_zero
 
@@ -106,7 +109,8 @@ def loadFile(filename, format=None):
 			raise UserWarning(
 				f'file type of {filename} could not be determined, use format option')
 
-	parsers = {'csv': loadFileCSV, 'isf': loadFileISF, 'mat': loadFileMAT}
+	parsers = {'csv': loadFileCSV, 'isf': loadFileISF,
+            'mat': loadFileMAT, 'html': loadFileISF}
 
 	if not format in parsers:
 		raise UserWarning(f'unknown format "{format}"')
