@@ -48,11 +48,7 @@ def loadFileISF(filename, channel):
 		# raise UserWarning(
 		#	f'file length ({len(data)}) does not match stated length ({data_length})')
 
-	if int(head['BIT_NR'][0]) != 16:
-		raise UserWarning(
-			f'ISF file uses incompatible bit depth: {head["BIT_NR"][0]}')
-
-	length = int(head[':WFMPRE:NR_PT'][0])
+	length = int(head['NR_PT'][0])
 	y_factor = float(head['YMULT'][0])
 	y_zero = float(head['YZERO'][0])
 	y_offset = float(head['YOFF'][0])
@@ -60,7 +56,13 @@ def loadFileISF(filename, channel):
 
 	fmt = {'MSB': '>', 'LSB': '<'}[head['BYT_OR'][0]] + str(length) + 'h'
 
-	Y = np.frombuffer(data, dtype=np.dtype('>i2'))
+	if int(head['BIT_NR'][0]) == 16:
+		Y = np.frombuffer(data, dtype=np.dtype('>i2'))
+	elif int(head['BIT_NR'][0]) == 8:
+		Y = np.frombuffer(data, dtype=np.dtype('>i2'))
+	else:
+		raise UserWarning(
+			f'ISF file uses incompatible bit depth: {head["BIT_NR"][0]}')
 
 	if len(Y) != length:
 		Y = Y[:length]

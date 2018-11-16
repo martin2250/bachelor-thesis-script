@@ -1,6 +1,10 @@
 #!/usr/bin/python3
 import argparse
+import os
 import socket
+import time
+
+import boltons.socketutils
 
 # doc: https://www.tek.com/oscilloscope/dpo4054-manual/mso4000-and-dpo4000-series
 
@@ -15,39 +19,101 @@ parser.add_argument('ip',
 parser.add_argument('channels', nargs='+',
                     help='which channels to save')
 parser.add_argument('output',
-                    help='output file pattern (must contain %c placeholder which will be replaced with the channel, if count is used, %n will be replaced with number)')
+                    help='output file pattern (must contain %%c placeholder which will be replaced with the channel, if count is used, %%n will be replaced with number)')
 parser.add_argument('--count', type=int,
                     help='number of waveforms to aquire')
+parser.add_argument('--port', type=int, default=4000,
+                    help='scope port number')
+parser.add_argument('--poll-interval', type=float, default=1,
+                    help='how often to poll the scope for the acquire state')
 
 ################################################################################
 
 args = parser.parse_args()
 
 
-def read_waveform(filepattern, numbered=False):
-	printquery(f'DATA:ENCDG RIBINARY')
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect((args.ip, args.port))
+s = boltons.socketutils.BufferedSocket(sock, maxsize=int(40e6))
+
+time.sleep(0.2)
+s.send(b'!d\n')
+s.flush()
+
+try:
+	while 1:
+		print(s.recv_until(b'\r\n', 0.1))
+except:
+	pass
+
+
+def printquery(query):
+	res = s.send((query + '\n').encode())
+	try:
+		res = s.recv_until(b'\n', 0.5).decode()
+	except:
+		res = ''
+	print(f'{query} -> {res}')
+	return res
+
+
+printquery('DATA:ENCDG RIBINARY')
+printquery('HEADER 1')
+
+
+def get_filename(channel, numbered=False):
+	pattern = args.output.replace('%c', channel)
+
+	if numbered:
+		num = 0
+
+		def insert_number(pattern, num):
+			return pattern.replace('%n', f'{num:04d}')
+		while os.path.exists(insert_number(pattern, num)):
+			num += 1
+		pattern = insert_number(pattern, num)
+
+	return pattern
+
+
+def read_waveform(filename, channel):
+	printquery(f'DATA:SOURCE {channel}')
+	printquery(f'DATA:START 0')
+	printquery(f'DATA:STOP {int(20e6)}')  # 20 megapoints or less
+
+	with open(filename, 'wb') as of:
+		#data_header = printquery('WFMOutpre?')
+		# of.write(data_header.encode())
+
+		s.send(b'WAVFrm?\n')
+		header = s.recv_until(b'#')
+		print(header)
+		of.write(header)
+		of.write(b'#')
+
+		data_length_length = s.recv_size(1)
+		of.write(data_length_length)
+
+		data_length = s.recv_size(int(data_length_length.decode(), base=16))
+		of.write(data_length)
+		data_length = int(data_length.decode())
+		print(f'data length: {data_length} bytes')
+
+		data = s.recv_size(data_length, timeout=20)
+		of.write(data)
+
+		print(f'file {filename} length: {of.tell()}')
+
+
+if args.count is None:
 	for channel in args.channels:
-		printquery(f'DATA:SOURCE {channel}')
-
-		if False:
-			printquery(f'DATA:START 0')
-			printquery(f'DATA:STOP {int(20e6)}')  # 20 megapoints or less
-
-		filename = get_filename(filepattern, channel, numbered)
-
-		with open(filename, 'w') as of:
-			of.write(scope.query('CURVE?'))
-			print(f'file {filename} length: {of.tell()}')
-
-
-if args.command == 'read':
-	read_waveform(args.output)
-
-elif args.command == 'trigger':
-	printquery('ACQUIRE:STOPAFTER SEQUENCE')
+		read_waveform(get_filename(channel), channel)
+else:
 	for i in range(args.count):
+		printquery('ACQUIRE:STOPAFTER SEQUENCE')
 		printquery('ACQUIRE:STATE RUN')
 		printquery('TRIGGER')
 		while printquery('ACQUIRE:STATE?') != ':ACQUIRE:STATE 0':
-			time.sleep(1)
-		read_waveform(args.output, True)
+			time.sleep(args.poll_interval)
+		for channel in args.channels:
+			read_waveform(get_filename(channel, True), channel)

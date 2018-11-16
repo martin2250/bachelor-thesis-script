@@ -18,8 +18,8 @@ subparsers = parser.add_subparsers(
 parser_read = subparsers.add_parser(
     'read', help='download current waveform')
 
-parser_read.add_argument('scope_id', type=int,
-                         help='ID, use list to show available scopes')
+# parser_read.add_argument('scope_id', type=int,
+#                         help='ID, use list to show available scopes')
 parser_read.add_argument('output',
                          help='output file pattern (must contain %c placeholder which will be replaced with the channel)')
 parser_read.add_argument('channels', nargs='+',
@@ -30,8 +30,8 @@ parser_read.add_argument('channels', nargs='+',
 parser_trigger = subparsers.add_parser(
     'trigger', help='read multiple waveforms')
 
-parser_trigger.add_argument('scope_id', type=int,
-                            help='ID, use list to show available scopes')
+# parser_trigger.add_argument('scope_id', type=int,
+#                             help='ID, use list to show available scopes')
 parser_trigger.add_argument('output', type=str,
                             help='output file pattern (must contain %n placeholder, which will be replaced with the first available number and %c which will be replace with the channel)')
 parser_trigger.add_argument('count', type=int,
@@ -44,7 +44,7 @@ parser_trigger.add_argument('channels', nargs='+',
 args = parser.parse_args()
 
 
-rm = visa.ResourceManager()
+rm = visa.ResourceManager('@py')
 scope = rm.open_resource('TCPIP::192.168.1.26::4000::SOCKET')
 
 
