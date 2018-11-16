@@ -12,20 +12,22 @@ import boltons.socketutils
 ################################################################################
 
 parser = argparse.ArgumentParser(
-    description='read waveform from tek oscilloscope via USB/GPIB')
+    description='read waveform from tek oscilloscope via USB/GPIB', epilog='when no --count is specified, the currently displayed waveform is downloaded. when a --count is given, the scope will start <count> captures, discarding the current trace. make sure to change the socket behavior to not use a terminal (under protocol)')
 
 parser.add_argument('ip',
                     help='scope IP address')
 parser.add_argument('channels', nargs='+',
                     help='which channels to save')
 parser.add_argument('output',
-                    help='output file pattern (must contain %%c placeholder which will be replaced with the channel, if count is used, %%n will be replaced with number)')
+                    help='output file pattern (may contain %%c placeholder which will be replaced with the channel, if count is used, %%n will be replaced with number)')
 parser.add_argument('--count', type=int,
                     help='number of waveforms to aquire')
 parser.add_argument('--port', type=int, default=4000,
                     help='scope port number')
 parser.add_argument('--poll-interval', type=float, default=1,
                     help='how often to poll the scope for the acquire state')
+parser.add_argument('--trigger', action='store_true',
+                    help='force trigger when capturing multiple waveforms')
 
 ################################################################################
 
@@ -47,8 +49,13 @@ except:
 	pass
 
 
-def printquery(query):
-	res = s.send((query + '\n').encode())
+def writequery(query):
+	s.send((query + '\n').encode())
+	print(query)
+
+
+def rwquery(query):
+	s.send((query + '\n').encode())
 	try:
 		res = s.recv_until(b'\n', 0.5).decode()
 	except:
@@ -57,8 +64,8 @@ def printquery(query):
 	return res
 
 
-printquery('DATA:ENCDG RIBINARY')
-printquery('HEADER 1')
+writequery('DATA:ENCDG RIBINARY')
+writequery('HEADER 1')
 
 
 def get_filename(channel, numbered=False):
@@ -77,9 +84,9 @@ def get_filename(channel, numbered=False):
 
 
 def read_waveform(filename, channel):
-	printquery(f'DATA:SOURCE {channel}')
-	printquery(f'DATA:START 0')
-	printquery(f'DATA:STOP {int(20e6)}')  # 20 megapoints or less
+	writequery(f'DATA:SOURCE {channel}')
+	writequery(f'DATA:START 0')
+	writequery(f'DATA:STOP {int(20e6)}')  # 20 megapoints or less
 
 	with open(filename, 'wb') as of:
 		#data_header = printquery('WFMOutpre?')
@@ -110,10 +117,11 @@ if args.count is None:
 		read_waveform(get_filename(channel), channel)
 else:
 	for i in range(args.count):
-		printquery('ACQUIRE:STOPAFTER SEQUENCE')
-		printquery('ACQUIRE:STATE RUN')
-		printquery('TRIGGER')
-		while printquery('ACQUIRE:STATE?') != ':ACQUIRE:STATE 0':
+		writequery('ACQUIRE:STOPAFTER SEQUENCE')
+		writequery('ACQUIRE:STATE RUN')
+		if args.trigger:
+			writequery('TRIGGER')
+		while rwquery('ACQUIRE:STATE?') != ':ACQUIRE:STATE 0':
 			time.sleep(args.poll_interval)
 		for channel in args.channels:
 			read_waveform(get_filename(channel, True), channel)

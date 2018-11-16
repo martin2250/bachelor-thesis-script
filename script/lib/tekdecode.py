@@ -59,7 +59,7 @@ def loadFileISF(filename, channel):
 	if int(head['BIT_NR'][0]) == 16:
 		Y = np.frombuffer(data, dtype=np.dtype('>i2'))
 	elif int(head['BIT_NR'][0]) == 8:
-		Y = np.frombuffer(data, dtype=np.dtype('>i2'))
+		Y = np.frombuffer(data, dtype=np.dtype('>i1'))
 	else:
 		raise UserWarning(
 			f'ISF file uses incompatible bit depth: {head["BIT_NR"][0]}')

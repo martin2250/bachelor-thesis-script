@@ -22,7 +22,8 @@ for file in args.file:
 	voltage = voltage[int(len(voltage) - len(voltage) / 20):]
 
 	time = np.arange(0, len(voltage)) * (1e6 / sample_rate)
-	voltage *= 1e-3
+
+	voltage *= 1e3
 
 	plt.plot(time, voltage, label=file)
 plt.ylabel('stage 2 output (mV)')
