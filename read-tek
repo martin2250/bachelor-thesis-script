@@ -66,6 +66,8 @@ def rwquery(query):
 
 writequery('DATA:ENCDG RIBINARY')
 writequery('HEADER 1')
+writequery(f'DATA:START 0')
+writequery(f'DATA:STOP {int(20e6)}')  # 20 megapoints or less
 
 
 def get_filename(channel, numbered=False):
@@ -85,8 +87,6 @@ def get_filename(channel, numbered=False):
 
 def read_waveform(filename, channel):
 	writequery(f'DATA:SOURCE {channel}')
-	writequery(f'DATA:START 0')
-	writequery(f'DATA:STOP {int(20e6)}')  # 20 megapoints or less
 
 	with open(filename, 'wb') as of:
 		#data_header = printquery('WFMOutpre?')
