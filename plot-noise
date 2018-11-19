@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import argparse
 import os
+from dataclasses import dataclass
 from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
@@ -12,14 +13,14 @@ import lib.tekdecode
 
 parser = argparse.ArgumentParser(
 	description='generates power density plots from time-domain oscilloscope data')
-parser.add_argument('files', metavar='input_file', type=str, nargs='+',
-                    help='csv/isf files from Tektronix scope, separate plots with dashes')
+parser.add_argument('--trace', nargs='+', type=str, action='append', required=True,
+                    help='label and files for a trace, can be used multiple times')
 parser.add_argument('--resolution', type=int,
                     help='fft resolution', default=100000)
 parser.add_argument('--output', type=str,
                     help='output file')
 parser.add_argument('--title', type=str,
-                    help='output file')
+                    help='plot title')
 
 args = parser.parse_args()
 
@@ -34,15 +35,23 @@ def process_file(file):
 
 
 def main():
-	files = args.files
+	titles = []		# trace titles
+	file_mappings = []  # indeces of files for each trace
+	files = []		# flattened array of all files
 
-	splitindeces = []
+	for trace in args.trace:
+		if not os.path.exists(trace[0]):
+			titles.append(trace[0])
+			trace = trace[1:]
+		else:
+			titles.append(','.join(trace))
 
-	while '-' in files:
-		index = files.index('-')
-		splitindeces.append(index)
-		del files[index]
-	splitindeces.append(len(files))
+		file_mappings.append(np.arange(len(files), len(files) + len(trace)))
+		files += trace
+
+	print(titles)
+	print(file_mappings)
+	print(files)
 
 	pool = Pool()
 	output = pool.map(process_file, files)
@@ -50,27 +59,21 @@ def main():
 	pool.join()
 
 	power, frequency, sample_rate = zip(*output)
+	frequency = frequency[0]
+	power = np.array(power)
 
 	if sample_rate.count(sample_rate[0]) != len(sample_rate):
 		print('files have different saple rates!')
 		exit(1)
 
-	frequency = frequency[0]
 	ax = plt.gca()
 
-	index_start = 0
-	for index_end in splitindeces:
-		voltage = np.sqrt(np.mean(power[index_start:index_end], axis=0))
+	for (title, file_mapping) in zip(titles, file_mappings):
+		print(file_mapping)
+		power_mean = np.mean(power[file_mapping], axis=0)
+		voltage = np.sqrt(power_mean)
 
-		# to compare with max:
-		# if index_start == 0:
-		# 	voltage /= 300
-		# elif index_start > 0:
-		# 	voltage /= 20
-
-		ax.plot(frequency, voltage * 1e6, label=','.join(
-			files[index_start:index_end]))
-		index_start = index_end
+		ax.plot(frequency, voltage * 1e6, label=title)
 
 	lib.plotstyle.format_fft_plot(ax)
 	ax.set_title('noise density')

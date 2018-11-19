@@ -12,7 +12,8 @@ import boltons.socketutils
 ################################################################################
 
 parser = argparse.ArgumentParser(
-    description='read waveform from tek oscilloscope via USB/GPIB', epilog='when no --count is specified, the currently displayed waveform is downloaded. when a --count is given, the scope will start <count> captures, discarding the current trace. make sure to change the socket behavior to not use a terminal (under protocol)')
+    description='read waveform from tek oscilloscope via socket connection',
+   	epilog='when no --count is specified, the currently displayed waveform is downloaded. when a --count is given, the scope will start <count> captures, discarding the current trace. make sure to change the socket behavior to not use a terminal (under protocol)')
 
 parser.add_argument('ip',
                     help='scope IP address')
@@ -110,6 +111,15 @@ def read_waveform(filename, channel):
 		of.write(data)
 
 		print(f'file {filename} length: {of.tell()}')
+
+
+if len(args.channels) > 1 and not '%c' in args.output:
+	raise UserWarning(
+            'output file must contain %c placeholder when saving multiple channels')
+
+if args.count is not None and not '%n' in args.output:
+	raise UserWarning(
+            'output file must contain %n placeholder when saving multiple curves')
 
 
 if args.count is None:
