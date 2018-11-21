@@ -283,13 +283,16 @@ if args.output_table:
 
 if args.fit_gain:
 	def lowpass(f, gain, cutoff, order):
-		return gain / (1 + f / cutoff) ** order
+		return gain / np.power(np.abs(1 + 1j * f / cutoff), order)
 
 	(gain, cutoff, order), _ = scipy.optimize.curve_fit(lowpass, Frequency,
-	                                                    Gain, (10, 10000, 1), bounds=([0, 100, 0.5], [100, 1e6, 3]))
+	                                                    Gain, (10, 10000, 1), bounds=([0, 100, 0.5], [100, 1e6, 1000]))
 
 	Frequency_fit = np.linspace(np.min(Frequency), np.max(Frequency), 100)
 	Gain_fit = lowpass(Frequency_fit, gain, cutoff, order)
+	print(f'gain: {gain:0.2f}  ({20*np.log10(gain):0.1f} dB)')
+	print(f'cutoff: {cutoff:0.1f} Hz')
+	print(f'order: {order:0.2f}')
 
 ################################################################################
 
@@ -303,6 +306,7 @@ if args.gain_axis == 'dB':
 	Gain_plot = 20 * np.log10(Gain)
 	if args.fit_gain:
 		Gain_fit_plot = 20 * np.log10(Gain_fit)
+	axis_gain.plot([np.min(Frequency), np.max(Frequency)], [-3, -3], color='red')
 
 elif args.gain_axis == 'ratio':
 	axis_gain.set_ylabel('gain')
