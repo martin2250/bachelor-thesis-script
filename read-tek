@@ -1,13 +1,10 @@
-#!/usr/bin/python3
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
 import argparse
-import os
-import socket
-import time
 
-import boltons.socketutils
+import argcomplete
 
 # doc: https://www.tek.com/oscilloscope/dpo4054-manual/mso4000-and-dpo4000-series
-
 
 ################################################################################
 
@@ -17,7 +14,7 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('ip',
                     help='scope IP address')
-parser.add_argument('channels', nargs='+',
+parser.add_argument('channels', nargs='+', choices=[f'CH{i + 1}' for i in range(4)],
                     help='which channels to save')
 parser.add_argument('output',
                     help='output file pattern (may contain %%c placeholder which will be replaced with the channel, if count is used, %%n will be replaced with number)')
@@ -32,8 +29,18 @@ parser.add_argument('--trigger', action='store_true',
 
 ################################################################################
 
+argcomplete.autocomplete(parser)
 args = parser.parse_args()
 
+# prevent autopep8 from moving these imports to the front
+if True:
+	import os
+	import socket
+	import time
+
+	import boltons.socketutils
+
+################################################################################
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect((args.ip, args.port))

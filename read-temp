@@ -45,8 +45,9 @@ message = [0x09, 0x60, 0x00, 0x00, 0x02]
 assert dev.ctrl_transfer(0x21, 9, 0x0300, 0, message)
 print("Feature Report Sent")
 
+scriptpath = os.path.dirname(os.path.realpath(__file__))
 
-(T, R) = np.loadtxt('calibration.dat', unpack=True)
+(T, R) = np.loadtxt(os.path.join(scriptpath, 'readtemp/calibration.dat'), unpack=True)
 sortindex = np.argsort(R)
 T = T[sortindex]
 R = R[sortindex]
