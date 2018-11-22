@@ -19,7 +19,7 @@ for file in args.file:
 
 	voltage, sample_rate, length = lib.tekdecode.loadFile(file)
 
-	voltage = voltage[int(len(voltage) - len(voltage) / 20):]
+	voltage = voltage[::100]
 
 	time = np.arange(0, len(voltage)) * (1e6 / sample_rate)
 

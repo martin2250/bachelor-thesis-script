@@ -15,7 +15,7 @@ import scipy.signal
 import lib.tekdecode
 
 parser = argparse.ArgumentParser(
-    description='uses picoscope to get frequency response of circuit')
+	description='uses picoscope to get frequency response of circuit')
 parser.add_argument('output',
                     help='output file, tab separated')
 
@@ -36,7 +36,7 @@ parser.add_argument('--points', type=int, default=100,
                     help='number of points')
 parser.add_argument('--samples', type=int, default=10000,
                     help='number of samples per waveform')
-parser.add_argument('--voltage', type=float, default=0.1,
+parser.add_argument('--voltage', type=float, default=0.4,
                     help='generator output voltage')
 parser.add_argument('--range-min', type=float, default=0,
                     help='minimum voltage range to use for inputs')
@@ -65,7 +65,7 @@ elif args.pico_series == '3000a':
 
 voltage_ranges = [50e-3, 100e-3, 200e-3, 500e-3, 1.0, 2.0, 5.0, 10.0, 20.0]
 voltage_ranges = np.array([range for range in voltage_ranges if (
-    range < args.range_max and range > args.range_min)])
+	range < args.range_max and range > args.range_min)])
 
 name_channels = {'input': args.channel_input, 'output': args.channel_output}
 
@@ -75,7 +75,7 @@ index_current_ranges = {'input': initial_range, 'output': initial_range}
 
 def update_range(name_channel):
 	scope.setChannel(name_channels[name_channel], coupling='DC',
-	                 VRange=voltage_ranges[index_current_ranges[name_channel]])
+                  VRange=voltage_ranges[index_current_ranges[name_channel]])
 
 
 update_range('input')
@@ -98,7 +98,7 @@ def checkRange(name_channel, voltage, overflow):
 
 	if index_current_ranges[name_channel] > 0:
 		voltage_max = np.max(np.abs(voltage))
-		minindex = np.argmax(voltage_max < (0.9 * voltage_ranges))
+		minindex = np.argmax(voltage_max < (0.7 * voltage_ranges))
 
 		if minindex < index_current_ranges[name_channel]:
 			print(f'{name_channel} underrange')
@@ -127,8 +127,8 @@ def sine(t, amplitude, frequency, phase, offset):
 
 def fitsine(T, U, freq_approx):
 	# try:
-		amplitude_max = np.max(np.abs(U)) or 0.01
 		offset_mean = np.mean(U)
+		amplitude_max = np.max(np.abs(U - offset_mean)) or 0.01
 
 		def sine_phase(t, phase):
 			return amplitude_max * np.sin(2 * np.pi * freq_approx * t - phase) + offset_mean
@@ -140,7 +140,7 @@ def fitsine(T, U, freq_approx):
 		guess = [amplitude_max, freq_approx, phase_approx, offset_mean]
 		bounds = (
                     [amplitude_max * 0.7, freq_approx * 0.5, -np.pi, -amplitude_max],
-                 			[amplitude_max, freq_approx / 0.5, np.pi, amplitude_max])
+                    [amplitude_max, freq_approx / 0.5, np.pi, amplitude_max])
 		result, _ = scipy.optimize.curve_fit(sine, T, U, guess, bounds=bounds)
 
 		amplitude, frequency, phase, offset = result
@@ -155,50 +155,75 @@ frequencies = np.logspace(np.log10(args.freq_start),
 
 
 with open(args.output, 'w') as file_output:
+	file_output.write('# ')
+	file_output.write(' '.join(sys.argv))
+	file_output.write('\n')
 
-	for frequency in frequencies:
-		scope.setSigGenBuiltInSimple(
-	            pkToPk=args.voltage, frequency=frequency, shots=0xFFFFFF)
-		time.sleep(0.1)
+	for (index, frequency) in enumerate(frequencies):
+		try:
+			print(f'{index}/{len(frequencies)} f: {frequency} Hz')
 
-		frequency_sample_set = frequency * args.samples / args.periods
-		frequency_sample, _ = scope.setSamplingFrequency(
-	            frequency_sample_set * 2, args.samples)
+			scope.setSigGenBuiltInSimple(
+                            pkToPk=args.voltage, frequency=frequency, shots=0xFFFFFF)
 
-		# print(
-	    #         f'f_sample,set: {frequency_sample_set:0.1f} Hz, f_sample,actual: {frequency_sample:0.1f}Hz')
+			time.sleep(max(0.5 / frequency, 0.4))
 
-		for i in range(args.retries):
-			scope.runBlock()
-			scope.waitReady()
+			frequency_sample_set = frequency * args.samples / args.periods
+			frequency_sample, _ = scope.setSamplingFrequency(
+                            frequency_sample_set * 2, args.samples)
 
-			voltage_input, overflow_input = scope.getDataV(
-	                    name_channels['input'], returnOverflow=True)
-			voltage_output, overflow_output = scope.getDataV(
-	                    name_channels['output'], returnOverflow=True)
+			# print(
+			#         f'f_sample,set: {frequency_sample_set:0.1f} Hz, f_sample,actual: {frequency_sample:0.1f}Hz')
 
-			retry_input = checkRange('input', voltage_input, overflow_input)
-			retry_output = checkRange('output', voltage_output, overflow_output)
+			for i in range(args.retries):
+				scope.runBlock()
+				scope.waitReady()
 
-			if not retry_input and not retry_output:
-				break
+				voltage_input, overflow_input = scope.getDataV(
+                                    name_channels['input'], returnOverflow=True)
+				voltage_output, overflow_output = scope.getDataV(
+                                    name_channels['output'], returnOverflow=True)
 
-		T = np.arange(len(voltage_input)) / frequency_sample
+				retry_input = checkRange('input', voltage_input, overflow_input)
+				retry_output = checkRange('output', voltage_output, overflow_output)
 
-		result_in = fitsine(T, voltage_input, frequency)
-		result_out = fitsine(T, voltage_output, frequency)
+				if not retry_input and not retry_output:
+					break
 
-		# plt.plot(T, voltage_input, 'x')
-		# plt.plot(T, voltage_output, 'x')
-		# if result_in:
-		# 	plt.plot(T, sine(T, result_in.amplitude, result_in.frequency,
-		#                result_in.phase, result_in.offset))
-		# if result_out:
+			T = np.arange(len(voltage_input)) / frequency_sample
 
-		# 	plt.plot(T, sine(T, result_out.amplitude, result_out.frequency,
-		#                result_out.phase, result_out.offset))
-		# plt.show()
-		print(f'f: {frequency} Hz\r', end='')
-		sys.stdout.flush()
-		file_output.write(
-                    f'{result_in.frequency:0.3f}\t{result_out.amplitude/result_in.amplitude:0.3f}\t{result_out.phase - result_in.phase:0.3f}\n')
+			result_in = fitsine(T, voltage_input, frequency)
+			result_out = fitsine(T, voltage_output, frequency)
+
+			if args.show_fits:
+				plt.plot(T, voltage_input, 'x')
+				plt.plot(T, voltage_output, 'x')
+				if result_in:
+					plt.plot(T, sine(T, result_in.amplitude, result_in.frequency,
+                                            result_in.phase, result_in.offset))
+				if result_out:
+					plt.plot(T, sine(T, result_out.amplitude, result_out.frequency,
+                                            result_out.phase, result_out.offset))
+				plt.show()
+
+			if result_in and result_out:
+				gain = result_out.amplitude / result_in.amplitude
+				phase = result_out.phase - result_in.phase
+				freq = (result_in.frequency + result_out.frequency) / 2
+				freq_diff_rel = (result_in.frequency - result_out.frequency) / freq
+
+				if freq_diff_rel > 0.05:
+					print(
+						f'warning: frequencies of fits differ by {freq_diff_rel*100:0.1f}%, the following value will be commented out in the data file')
+					print(f'input: {result_in.frequency:0.2f}')
+					print(f'output: {result_out.frequency:0.2f}')
+					file_output.write(f'# f_in: {result_in.frequency:0.2f}\n')
+					file_output.write(f'# f_out: {result_out.frequency:0.2f}\n')
+					file_output.write('# ')
+
+				print(f'f: {freq:0.2f}\tg: {gain:0.2f}\tp: {phase*180/np.pi:0.0f}°')
+
+				file_output.write(
+                                    f'{freq:0.3f}\t{gain:0.3f}\t{phase:0.3f}\n')
+		except Exception as e:
+			print(e)
