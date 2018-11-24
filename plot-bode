@@ -21,6 +21,8 @@ parser.add_argument('--output',
 
 parser.add_argument('--fit-gain', action='store_true',
                     help='try to fit a low pass curve to gain')
+parser.add_argument('--fit-gain-degree', type=int,
+                    help='try to fit a low pass curve to gain')
 
 ################################################################################
 
@@ -40,17 +42,24 @@ if True:
 ################################################################################
 
 if args.fit_gain:
-	def lowpass(f, gain, cutoff, order):
-		return gain / np.power(np.abs(1 + 1j * f / cutoff), order)
+	Frequency_fit = np.logspace(
+            np.min(np.log10(Frequency)), np.max(np.log10(Frequency
+                                                         )), 100)
+	# def bandpass(f, gain, cutoffL, orderL, cutoffH, orderH):
+	# 	return gain / (np.power(np.abs(1 + 1j * f / cutoffL), orderL) * np.power(np.abs(1 + 1j * cutoffH / f), orderH))
+	#
+	# fitresult, _ = scipy.optimize.curve_fit(bandpass, Frequency,
+    #                                      Gain, (10, 10000, 1, 20, 1), bounds=([0, 100, 0.5, 1, 0.5], [100, 1e6, 1000, 1000, 1000]))
+	#
+	# Gain_fit = bandpass(Frequency_fit, *fitresult)
+	# print(f'gain: {gain:0.2f}  ({20*np.log10(gain):0.1f} dB)')
+	# print(f'cutoff: {cutoff:0.1f} Hz')
+	# print(f'order: {order:0.2f}')
 
-	(gain, cutoff, order), _ = scipy.optimize.curve_fit(lowpass, Frequency,
-	                                                    Gain, (10, 10000, 1), bounds=([0, 100, 0.5], [100, 1e6, 1000]))
+	fitresult = np.polyfit(
+		np.log10(Frequency), np.log10(Gain), args.fit_gain_degree)
+	Gain_fit = 10**np.polyval(fitresult, np.log10(Frequency_fit))
 
-	Frequency_fit = np.linspace(np.min(Frequency), np.max(Frequency), 100)
-	Gain_fit = lowpass(Frequency_fit, gain, cutoff, order)
-	print(f'gain: {gain:0.2f}  ({20*np.log10(gain):0.1f} dB)')
-	print(f'cutoff: {cutoff:0.1f} Hz')
-	print(f'order: {order:0.2f}')
 
 ################################################################################
 
