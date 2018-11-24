@@ -9,20 +9,25 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('input', help='input file, tab separated')
 
-parser.add_argument('--gain-axis', choices=['ratio', 'dB'], default='ratio',
+parser.add_argument('--gain', choices=['ratio', 'dB'], default='ratio',
                     help='how to plot gain')
-parser.add_argument('--phase-axis', choices=['rad', 'deg'], default='deg',
+parser.add_argument('--phase', choices=['rad', 'deg'],
                     help='how to plot phase')
 parser.add_argument('--title',
                     help='plot title')
+
+parser.add_argument('--factor', type=float,
+                    help='constant factor to multiply on gain')
+parser.add_argument('--frequency-range', type=float, nargs=2,
+                    help='min and max frequency for plot')
 
 parser.add_argument('--output',
                     help='plot output file')
 
 parser.add_argument('--fit-gain', action='store_true',
-                    help='try to fit a low pass curve to gain')
-parser.add_argument('--fit-gain-degree', type=int,
-                    help='try to fit a low pass curve to gain')
+                    help='try to fit a band pass curve to gain')
+parser.add_argument('--fit-output', action='store_true', default=False,
+                    help='print result of fit')
 
 ################################################################################
 
@@ -33,82 +38,89 @@ args = parser.parse_args()
 if True:
 	import numpy as np
 	import matplotlib.pyplot as plt
-	import scipy.optimize
+	import lib.fitgain
+	import matplotlib.ticker
 
 ################################################################################
 
-(Frequency, Gain, Phase) = np.loadtxt(args.input, unpack=True)
+(frequency, gain, phase) = np.loadtxt(args.input, unpack=True)
+
+if args.factor:
+	gain *= args.factor
+
 
 ################################################################################
 
 if args.fit_gain:
-	Frequency_fit = np.logspace(
-            np.min(np.log10(Frequency)), np.max(np.log10(Frequency
-                                                         )), 100)
-	# def bandpass(f, gain, cutoffL, orderL, cutoffH, orderH):
-	# 	return gain / (np.power(np.abs(1 + 1j * f / cutoffL), orderL) * np.power(np.abs(1 + 1j * cutoffH / f), orderH))
-	#
-	# fitresult, _ = scipy.optimize.curve_fit(bandpass, Frequency,
-    #                                      Gain, (10, 10000, 1, 20, 1), bounds=([0, 100, 0.5, 1, 0.5], [100, 1e6, 1000, 1000, 1000]))
-	#
-	# Gain_fit = bandpass(Frequency_fit, *fitresult)
-	# print(f'gain: {gain:0.2f}  ({20*np.log10(gain):0.1f} dB)')
-	# print(f'cutoff: {cutoff:0.1f} Hz')
-	# print(f'order: {order:0.2f}')
+	gain_fitfunc = lib.fitgain.fit_hybrid(frequency, gain, args.fit_output)
 
-	fitresult = np.polyfit(
-		np.log10(Frequency), np.log10(Gain), args.fit_gain_degree)
-	Gain_fit = 10**np.polyval(fitresult, np.log10(Frequency_fit))
+	if args.frequency_range:
+		f_log_min = np.log10(args.frequency_range[0])
+		f_log_max = np.log10(args.frequency_range[1])
+	else:
+		f_log_min = np.log10(np.min(frequency))
+		f_log_max = np.log10(np.max(frequency))
 
+	frequency_fit = np.logspace(f_log_min, f_log_max, 100)
+
+	gain_fit = gain_fitfunc(frequency_fit)
 
 ################################################################################
 
+lines = []
 axis_gain = plt.gca()
 axis_gain.grid(which='both')
 axis_gain.set_xscale("log", nonposx='clip')
 axis_gain.set_xlabel('frequency (Hz)')
 
-if args.gain_axis == 'dB':
-	axis_gain.set_ylabel('gain (dB)')
-	Gain_plot = 20 * np.log10(Gain)
-	if args.fit_gain:
-		Gain_fit_plot = 20 * np.log10(Gain_fit)
-	axis_gain.plot([np.min(Frequency), np.max(Frequency)], [-3, -3], color='red')
+if args.frequency_range:
+	axis_gain.set_xlim(*args.frequency_range)
 
-elif args.gain_axis == 'ratio':
+if args.gain == 'dB':
+	axis_gain.set_ylabel('gain (dB)')
+	lines += axis_gain.plot(frequency, 20 * np.log10(gain),
+                         '+', label='gain', color='C0')
+
+	if args.fit_gain:
+		lines += axis_gain.plot(frequency_fit, 20 * np.log10(gain_fit),
+                          '-', label='fit', color='red')
+
+elif args.gain == 'ratio':
 	axis_gain.set_ylabel('gain')
 	axis_gain.set_yscale("log", nonposy='clip')
-	Gain_plot = Gain
+	lines += axis_gain.plot(frequency, gain, '+', label='gain', color='C0')
+
 	if args.fit_gain:
-		Gain_fit_plot = Gain_fit
-
-line_gain = axis_gain.plot(Frequency, Gain_plot, '+', label='gain', color='C1')
-if args.fit_gain:
-	line_gain_fit = axis_gain.plot(
-		Frequency_fit, Gain_fit_plot, '-', label='gain fit', color='C0')
+		lines += axis_gain.plot(frequency_fit, gain_fit,
+                          '-', label='fit', color='red')
 
 ################################################################################
 
-axis_phase = axis_gain.twinx()
-axis_phase.set_ylabel('phase')
+if args.phase:
+	axis_phase = axis_gain.twinx()
+	axis_phase.set_ylabel('phase')
 
-if args.phase_axis == 'rad':
-	axis_phase.set_ylim(-np.pi, np.pi)
-	Phase_plot = Phase
+	if args.phase == 'rad':
+		axis_phase.set_ylim(-np.pi, np.pi)
+		lines.append(axis_phase.plot(
+			frequency, phase, '+', label='phase', color='C1'))
 
-elif args.phase_axis == 'deg':
-	axis_phase.set_ylim(-180, 180)
-	axis_phase.set_yticks(np.arange(-180, 181, 45, ))
-	Phase_plot = Phase * 180 / np.pi
-
-line_phase = axis_phase.plot(
-	Frequency, Phase_plot, '+', label='phase', color='C2')
+	elif args.phase == 'deg':
+		axis_phase.set_ylim(-180, 180)
+		axis_phase.set_yticks(np.arange(-180, 181, 45, ))
+		lines.append(axis_phase.plot(
+			frequency, phase * 180 / pi, '+', label='phase', color='C1'))
 
 ################################################################################
 
-lns = line_gain + line_phase
-labs = [l.get_label() for l in lns]
-axis_gain.legend(lns, labs, loc=0)
+labels = [l.get_label() for l in lines]
+axis_gain.legend(lines, labels, loc=0)
+
+axis_gain.yaxis.set_major_formatter(
+    matplotlib.ticker.FormatStrFormatter('%0.1f'))
+axis_gain.yaxis.set_minor_formatter(
+    matplotlib.ticker.FormatStrFormatter('%0.1f'))
+
 
 if args.title:
 	plt.title(args.title)
