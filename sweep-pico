@@ -24,7 +24,7 @@ parser.add_argument('channel_output', metavar='channel-output', choices=list_cha
 parser.add_argument('--sweep', choices=['log', 'linear'],
                     default='log',
                     help='sweep type')
-parser.add_argument('--voltage', type=float, default=0.4,
+parser.add_argument('--voltage', type=float, default=0.1,
                     help='generator output voltage')
 
 parser.add_argument('--points', type=int, default=100,
@@ -68,6 +68,14 @@ if True:
 
 if args.show_fits:
 	import matplotlib.pyplot as plt
+
+if os.path.exists(args.output):
+	while True:
+		response = input('output file exists, overwrite? (y/N)')
+		if response == 'y':
+			break
+		if not response:
+			exit(0)
 
 if args.pico_series == '6000':
 	import picoscope.ps6000
@@ -175,7 +183,7 @@ with open(args.output, 'w') as file_output:
 			scope.setSigGenBuiltInSimple(
                             pkToPk=args.voltage, frequency=frequency, shots=0xFFFFFF)
 
-			time.sleep(max(0.5 / frequency, 0.4))
+			time.sleep(max(0.5 / frequency, 0.05))
 
 			frequency_sample_set = frequency * args.samples / args.periods
 			frequency_sample, _ = scope.setSamplingFrequency(
