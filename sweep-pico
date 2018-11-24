@@ -4,6 +4,8 @@ import argparse
 
 import argcomplete
 
+################################################################################
+
 parser = argparse.ArgumentParser(
 	description='uses picoscope to get frequency response of circuit')
 
@@ -31,6 +33,8 @@ parser.add_argument('--points', type=int, default=100,
                     help='number of points')
 parser.add_argument('--samples', type=int, default=10000,
                     help='number of samples per waveform')
+parser.add_argument('--max-sample-rate', type=int, default=500000000,
+                    help='maximum sample rate of oscilloscope')
 parser.add_argument('--periods', type=float, default=5,
                     help='minimum number of sine periods to use for each frequency')
 
@@ -48,12 +52,19 @@ parser.add_argument('--show-fits', action='store_true',
 parser.add_argument('--plot', action='store_true',
                     help='show final plot by calling plot-bode')
 
+parser.add_argument('-v', '--verbose', action='store_true',
+                    help='print more debug stuff')
+parser.add_argument('-y', '--yes', action='store_true',
+                    help='overwrite output file')
+
 parser.add_argument('--pico-series', choices=['3000a', '6000'],
                     default='6000',
                     help='picoscope series')
 
 argcomplete.autocomplete(parser)
 args = parser.parse_args()
+
+################################################################################
 
 # prevent autopep8 from moving these imports to the front
 if True:
@@ -66,16 +77,22 @@ if True:
 	import picoscope
 	import scipy.optimize
 
+################################################################################
+
+if not args.yes and os.path.exists(args.output):
+	response = input('output file exists, overwrite? (y/N)')
+	if response != 'y':
+		exit(0)
+
+################################################################################
+
 if args.show_fits:
 	import matplotlib.pyplot as plt
+	axis = plt.gca()
+	plt.ion()
+	plt.show()
 
-if os.path.exists(args.output):
-	while True:
-		response = input('output file exists, overwrite? (y/N)')
-		if response == 'y':
-			break
-		if not response:
-			exit(0)
+################################################################################
 
 if args.pico_series == '6000':
 	import picoscope.ps6000
@@ -83,6 +100,8 @@ if args.pico_series == '6000':
 elif args.pico_series == '3000a':
 	import picoscope.ps3000a
 	scope = picoscope.ps3000a.PS3000a()
+
+################################################################################
 
 voltage_ranges = [50e-3, 100e-3, 200e-3, 500e-3, 1.0, 2.0, 5.0, 10.0, 20.0]
 voltage_ranges = np.array([range for range in voltage_ranges if (
@@ -103,6 +122,8 @@ update_range('input')
 update_range('output')
 scope.setSimpleTrigger(name_channels['input'], threshold_V=0)
 scope.setNoOfCaptures(1)
+
+################################################################################
 
 
 def checkRange(name_channel, voltage, overflow):
@@ -130,6 +151,8 @@ def checkRange(name_channel, voltage, overflow):
 			update_range(name_channel)
 
 	return retry
+
+################################################################################
 
 
 @dataclass
@@ -167,27 +190,29 @@ def fitsine(T, U, freq_approx):
 
 	return FitResult(amplitude=amplitude, frequency=frequency, phase=phase, offset=offset, time=T, voltage=U)
 
-
-frequencies = np.logspace(np.log10(args.freq_start),
-                          np.log10(args.freq_stop), args.points)
+################################################################################
 
 
 with open(args.output, 'w') as file_output:
 	file_output.write('# ' + ' '.join(sys.argv)
 	                  + '\n# Frequency f (Hz)\n# Gain a\n# Phase p (rad)\n# f\ta\tp\n')
 
+	frequencies = np.logspace(np.log10(args.freq_start),
+	                          np.log10(args.freq_stop), args.points)
+
 	for (index, frequency) in enumerate(frequencies):
 		try:
-			print(f'{index}/{len(frequencies)} f: {frequency} Hz')
 
 			scope.setSigGenBuiltInSimple(
                             pkToPk=args.voltage, frequency=frequency, shots=0xFFFFFF)
 
-			time.sleep(max(0.5 / frequency, 0.05))
-
-			frequency_sample_set = frequency * args.samples / args.periods
+			frequency_sample_set = min(
+				frequency * args.samples / args.periods, args.max_sample_rate)
 			frequency_sample, _ = scope.setSamplingFrequency(
-                            frequency_sample_set * 2, args.samples)
+				frequency_sample_set * 2, args.samples)
+
+			print(f'{index}/{len(frequencies)}\tf: {frequency:0.2f} Hz\tfs: {frequency_sample:0.0f} ({frequency_sample_set:0.0f})')
+			time.sleep(max(0.5 / frequency, 0.05))
 
 			for i in range(args.retries):
 				scope.runBlock()
@@ -210,15 +235,24 @@ with open(args.output, 'w') as file_output:
 			result_out = fitsine(T, voltage_output, frequency)
 
 			if args.show_fits:
-				plt.plot(T, voltage_input, 'x')
-				plt.plot(T, voltage_output, 'x')
+				plt.clf()
+				plt.plot(T, voltage_input, 'x', color='C0')
+				plt.plot(T, voltage_output, 'x', color='C1')
 				if result_in:
 					plt.plot(T, sine(T, result_in.amplitude, result_in.frequency,
                                             result_in.phase, result_in.offset))
 				if result_out:
 					plt.plot(T, sine(T, result_out.amplitude, result_out.frequency,
                                             result_out.phase, result_out.offset))
-				plt.show()
+
+				range_input = voltage_ranges[index_current_ranges['input']]
+				range_output = voltage_ranges[index_current_ranges['output']]
+
+				plt.hlines([range_input, -range_input, range_output,
+                                    - range_output], T[0], T[-1], ['C0', 'C0', 'C1', 'C1'])
+
+				plt.draw()
+				plt.pause(0.001)
 
 			if result_in and result_out:
 				gain = result_out.amplitude / result_in.amplitude
