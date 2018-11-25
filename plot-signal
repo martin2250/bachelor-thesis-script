@@ -12,6 +12,8 @@ parser = argparse.ArgumentParser(
     description='generates time-domain plots from oscilloscope data')
 parser.add_argument('file',
                     help='csv/isf files from Tektronix scope', nargs='+')
+parser.add_argument('--downsample', type=int, default=100,
+                    help='number of samples to skip')
 
 args = parser.parse_args()
 
@@ -19,9 +21,9 @@ for file in args.file:
 
 	voltage, sample_rate, length = lib.tekdecode.loadFile(file)
 
-	voltage = voltage[::100]
+	voltage = voltage[::args.downsample]
 
-	time = np.arange(0, len(voltage)) * (100 * 1e6 / sample_rate)
+	time = np.arange(0, len(voltage)) * (args.downsample * 1e6 / sample_rate)
 
 	voltage *= 1e3
 
