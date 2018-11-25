@@ -22,6 +22,8 @@ parser.add_argument('--gain-factor-const',
                     help='constant amplification of buffer amplifier (evaluated as expression, gain will be divided by this factor)')
 parser.add_argument('--gain-factor-fit', action='append',
                     help='supply one or more (frequency - gain) files to get input referenced plot, gain will be divided by this')
+parser.add_argument('--gain-fit-function', choices=['hybrid', 'simple'], default='hybrid',
+                    help='fit function used for gain (both for gain correction and final plot)')
 
 parser.add_argument('--frequency-range', type=float, nargs=2,
                     help='min and max frequency for plot')
@@ -46,6 +48,8 @@ if True:
 	import lib.fitgain
 	import matplotlib.ticker
 
+	gain_fit_creator = lib.fitgain.fit_lookup[args.gain_fit_function]
+
 ################################################################################
 
 (frequency, gain, phase) = np.loadtxt(args.input, unpack=True)
@@ -56,13 +60,13 @@ if args.gain_factor_const:
 for gain_file in args.gain_factor_fit or []:
 	(frequency_fit, gain_fit) = np.loadtxt(
 		gain_file, unpack=True, usecols=(0, 1))
-	gain_fitfunc = lib.fitgain.fit_hybrid(frequency_fit, gain_fit)
+	gain_fitfunc = gain_fit_creator(frequency_fit, gain_fit)
 	gain /= gain_fitfunc(frequency)
 
 ################################################################################
 
 if args.fit_gain:
-	gain_fitfunc = lib.fitgain.fit_hybrid(frequency, gain, args.fit_output)
+	gain_fitfunc = gain_fit_creator(frequency, gain, args.fit_output)
 
 	if args.frequency_range:
 		f_log_min = np.log10(args.frequency_range[0])

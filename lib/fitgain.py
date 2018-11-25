@@ -18,14 +18,15 @@ def fit_hybrid(frequency, gain, print_fit=False):
 		# theoretical model with higher order low/high passes
 		model = np.power(lowpass, orderH) * np.power(highpass, orderL)
 
-		ratio = lowpass * highpass
+		ratio = (lowpass * highpass)**2
 
+		#output = gain * (np.power(poly, ratio) * np.power(model, (1 - ratio)))
 		output = gain * (poly * ratio + model * (1 - ratio))
 
 		return output
 
 	bandfit, _ = scipy.optimize.curve_fit(bandpass, frequency,
-                                       gain, (10, 20, 10000, 1, 1, 0, 0, 0, 0), bounds=([0, 5e-1, 5e3, 0.5, 0.5, -1, -1, -1, -1], [100, 5e3, 5e5, 20, 20, 1, 1, 1, 1]))
+                                       gain, (10, 20, 10000, 1, 1, 0, 0, 0, 0), bounds=([0, 5e-1, 5e3, 0.5, 0.5, -1, -1, -1, -1], [500, 5e3, 5e5, 5, 5, 1, 1, 1, 1]))
 
 	if print_fit:
 		labels = ['gain', 'cutoffL', 'cutoffH',
@@ -46,9 +47,18 @@ def fit_simple(frequency, gain, print_fit=False):
 		return gain / (np.power(np.abs(1 + 1j * f / cutoffH), orderH) * np.power(np.abs(1 + 1j * cutoffL / f), orderL))
 
 	bandfit, _ = scipy.optimize.curve_fit(bandpass, frequency,
-                                       gain, (10, 20, 10000, 1, 1), bounds=([0, 5e-1, 5e3, 0.5, 0.5], [100, 5e3, 5e5, 20, 20]))
+                                       gain, (10, 20, 10000, 1, 1), bounds=([0, 5e-1, 5e3, 0.5, 0.5], [500, 5e3, 5e5, 20, 20]))
+
+	if print_fit:
+		labels = ['gain', 'cutoffL', 'cutoffH', 'orderL', 'orderH']
+
+		for (label, value) in zip(labels, bandfit):
+					print(f'{label}: {value:0.3f}')
 
 	def gain(frequency):
 		return bandpass(frequency, *bandfit)
 
 	return gain
+
+
+fit_lookup = {'hybrid': fit_hybrid, 'simple': fit_simple}
