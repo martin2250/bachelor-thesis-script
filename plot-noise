@@ -4,15 +4,17 @@ import argparse
 
 import argcomplete
 
+################################################################################
+
 parser = argparse.ArgumentParser(
 	description='generates power density plots from time-domain oscilloscope data')
 parser.add_argument('--trace', nargs='+', type=str, action='append', required=True,
                     help='label and files for a trace, can be used multiple times')
 
-parser.add_argument('--gain-fit',
-                    help='supply a (frequency - gain) file to calculate input noise from output noise')
-parser.add_argument('--factor', type=float,
-                    help='constant factor to multiply on noise')
+parser.add_argument('--gain-factor-const',
+                    help='constant amplification of buffer amplifier (evaluated as expression, noise will be divided by this factor)')
+parser.add_argument('--gain-factor-fit', action='append',
+                    help='supply one or more (frequency - gain) files to get input referenced plot, noise will be divided by this')
 
 parser.add_argument('--resolution', type=int,
                     help='fft resolution', default=100000)
@@ -23,6 +25,8 @@ parser.add_argument('--reference', type=str, default='out',
 parser.add_argument('--output', type=str,
                     help='output file')
 
+################################################################################
+
 argcomplete.autocomplete(parser)
 args = parser.parse_args()
 
@@ -32,12 +36,14 @@ if True:
 	from multiprocessing import Pool
 
 	import matplotlib.pyplot as plt
+	import matplotlib.ticker
 	import numpy as np
 	import scipy.signal
 
 	import lib.fitgain
-	import lib.plotstyle
 	import lib.tekdecode
+
+################################################################################
 
 
 def process_file(file):
@@ -47,6 +53,8 @@ def process_file(file):
 		voltage, sample_rate, nperseg=args.resolution)
 
 	return power, frequency, sample_rate
+
+################################################################################
 
 
 def main():
@@ -64,9 +72,7 @@ def main():
 		file_mappings.append(np.arange(len(files), len(files) + len(trace)))
 		files += trace
 
-	print(titles)
-	print(file_mappings)
-	print(files)
+	############################################################################
 
 	pool = Pool()
 	output = pool.map(process_file, files)
@@ -77,9 +83,13 @@ def main():
 	frequency = frequency[0]
 	power = np.array(power)
 
+	############################################################################
+
 	if sample_rate.count(sample_rate[0]) != len(sample_rate):
 		print('files have different saple rates!')
 		exit(1)
+
+	############################################################################
 
 	ax = plt.gca()
 
@@ -88,15 +98,18 @@ def main():
 		power_mean = np.mean(power[file_mapping], axis=0)
 		voltage = np.sqrt(power_mean)
 
-		if args.factor:
-			voltage *= args.factor
-		if args.gain_fit:
-			(frequency_fit, gain) = np.loadtxt(
-				args.gain_fit, unpack=True, usecols=(0, 1))
-			gain_fitfunc = lib.fitgain.fit(frequency_fit, gain)
+		if args.gain_factor_const:
+			voltage /= eval(args.gain_factor_const)
+
+		for gain_file in args.gain_factor_fit or []:
+			(frequency_fit, gain_fit) = np.loadtxt(
+				gain_file, unpack=True, usecols=(0, 1))
+			gain_fitfunc = lib.fitgain.fit_hybrid(frequency_fit, gain_fit)
 			voltage /= gain_fitfunc(frequency)
 
 		ax.plot(frequency, voltage * 1e6, label=title)
+
+	############################################################################
 
 	ax.set_xscale("log", nonposx='clip')
 	ax.set_yscale("log", nonposy='clip')
@@ -109,10 +122,14 @@ def main():
 	ax.set_title('noise density')
 	plt.legend()
 
+	############################################################################
+
 	if args.output:
 		plt.savefig(args.output)
 	else:
 		plt.show()
+
+################################################################################
 
 
 if __name__ == "__main__":

@@ -37,6 +37,8 @@ parser.add_argument('--max-sample-rate', type=int, default=500000000,
                     help='maximum sample rate of oscilloscope')
 parser.add_argument('--periods', type=float, default=5,
                     help='minimum number of sine periods to use for each frequency')
+parser.add_argument('--invert', action='store_true',
+                    help='invert output signal')
 
 parser.add_argument('--range-min', type=float, default=0,
                     help='minimum voltage range to use for inputs')
@@ -194,8 +196,8 @@ def fitsine(T, U, freq_approx):
 
 
 with open(args.output, 'w') as file_output:
-	file_output.write('# ' + ' '.join(sys.argv)
-	                  + '\n# Frequency f (Hz)\n# Gain a\n# Phase p (rad)\n# f\ta\tp\n')
+	file_output.write('# ' + ' '.join(sys.argv) +
+	                  '\n# Frequency f (Hz)\n# Gain a\n# Phase p (rad)\n# f\ta\tp\n')
 
 	frequencies = np.logspace(np.log10(args.freq_start),
 	                          np.log10(args.freq_stop), args.points)
@@ -228,6 +230,9 @@ with open(args.output, 'w') as file_output:
 
 				if not retry_input and not retry_output:
 					break
+
+			if args.invert:
+				voltage_output = -voltage_output
 
 			T = np.arange(len(voltage_input)) / frequency_sample
 

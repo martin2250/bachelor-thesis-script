@@ -21,12 +21,13 @@ for file in args.file:
 
 	voltage = voltage[::100]
 
-	time = np.arange(0, len(voltage)) * (1e6 / sample_rate)
+	time = np.arange(0, len(voltage)) * (100 * 1e6 / sample_rate)
 
 	voltage *= 1e3
 
 	plt.plot(time, voltage, label=file)
-plt.ylabel('stage 2 output (mV)')
+
+plt.ylabel('voltage (mV)')
 plt.xlabel('time (µs)')
 plt.legend()
 plt.grid(which='both')

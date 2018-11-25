@@ -4,9 +4,6 @@ import argparse
 
 import argcomplete
 
-print('still have to complete this turd')
-exit(1)
-
 parser = argparse.ArgumentParser(
 	description='generates bode plots from time-domain oscilloscope data')
 
@@ -33,6 +30,11 @@ parser.add_argument('--show-fits', action='store_true',
 parser.add_argument('--invert', action='store_true',
                     help='invert output signal')
 
+parser.add_argument('--plot', action='store_true',
+                    help='show final plot by calling plot-bode')
+parser.add_argument('-y', '--yes', action='store_true',
+                    help='overwrite output file')
+
 parser.add_argument('--stopwatch', action='store_true',
                     help='show time required for different operations')
 
@@ -44,6 +46,7 @@ args = parser.parse_args()
 # prevent autopep8 from moving these imports to the front
 if True:
 	import time
+	import os
 	from dataclasses import dataclass
 	from multiprocessing import Pool
 
@@ -52,6 +55,13 @@ if True:
 	import scipy.signal
 
 	import lib.tekdecode
+
+################################################################################
+
+if not args.yes and os.path.exists(args.output):
+	response = input('output file exists, overwrite? (y/N)')
+	if response != 'y':
+		exit(0)
 
 ################################################################################
 
@@ -186,15 +196,17 @@ def center_index_to_results(index_center):
 center_indexes = np.linspace(get_slice_length(
         args.freq_start), length - get_slice_length(args.freq_stop), args.points).astype(int)
 
-center_indexes = np.extract(approx_freq(
-	center_indexes) < args.max_freq, center_indexes)
-
 pool = Pool()
 results = pool.map(center_index_to_results, list(center_indexes))
 pool.close()
 pool.join()
 
 report_duration('fitting sine to data')
+
+################################################################################
+
+if args.show_fits:
+	import matplotlib.pyplot as plt
 
 ############################################################################
 
@@ -238,101 +250,18 @@ report_duration('creating final output values')
 
 ################################################################################
 
-condition = Frequency < args.max_freq
-Frequency = np.extract(condition, Frequency)
-Gain = np.extract(condition, Gain)
-Phase = np.extract(condition, Phase)
-
-################################################################################
-
 print(f'final data points: {len(Frequency)}')
 
 ################################################################################
 
-if args.output_table:
-	with open(args.output_table, 'w') as file:
-		file.write('# frequency (Hz), gain (V/V), phase (rad)')
-		for (f, g, phi) in zip(Frequency, Gain, Phase):
-			file.write(f'{f:0.1f}\t{g:0.3e}\t{phi:0.2f}\n')
+with open(args.output, 'w') as file:
+	file.write('# frequency (Hz), gain (V/V), phase (rad)')
+	for (f, g, phi) in zip(Frequency, Gain, Phase):
+		file.write(f'{f:0.1f}\t{g:0.3e}\t{phi:0.2f}\n')
 
-			report_duration('writing values to table')
+	report_duration('writing values to table')
 
-################################################################################
-
-if args.fit_gain:
-	def lowpass(f, gain, cutoff, order):
-		return gain / np.power(np.abs(1 + 1j * f / cutoff), order)
-
-	(gain, cutoff, order), _ = scipy.optimize.curve_fit(lowpass, Frequency,
-	                                                    Gain, (10, 10000, 1), bounds=([0, 100, 0.5], [100, 1e6, 1000]))
-
-	Frequency_fit = np.linspace(np.min(Frequency), np.max(Frequency), 100)
-	Gain_fit = lowpass(Frequency_fit, gain, cutoff, order)
-	print(f'gain: {gain:0.2f}  ({20*np.log10(gain):0.1f} dB)')
-	print(f'cutoff: {cutoff:0.1f} Hz')
-	print(f'order: {order:0.2f}')
-
-################################################################################
-
-axis_gain = plt.gca()
-axis_gain.grid(which='both')
-axis_gain.set_xscale("log", nonposx='clip')
-axis_gain.set_xlabel('frequency (Hz)')
-
-if args.gain_axis == 'dB':
-	axis_gain.set_ylabel('gain (dB)')
-	Gain_plot = 20 * np.log10(Gain)
-	if args.fit_gain:
-		Gain_fit_plot = 20 * np.log10(Gain_fit)
-	axis_gain.plot([np.min(Frequency), np.max(Frequency)], [-3, -3], color='red')
-
-elif args.gain_axis == 'ratio':
-	axis_gain.set_ylabel('gain')
-	axis_gain.set_yscale("log", nonposy='clip')
-	Gain_plot = Gain
-	if args.fit_gain:
-		Gain_fit_plot = Gain_fit
-
-line_gain = axis_gain.plot(Frequency, Gain_plot, '+', label='gain', color='C1')
-if args.fit_gain:
-	line_gain_fit = axis_gain.plot(
-		Frequency_fit, Gain_fit_plot, '-', label='gain fit', color='C0')
-
-################################################################################
-
-axis_phase = axis_gain.twinx()
-axis_phase.set_ylabel('phase')
-
-if args.phase_axis == 'rad':
-	axis_phase.set_ylim(-np.pi, np.pi)
-	Phase_plot = Phase
-
-elif args.phase_axis == 'deg':
-	axis_phase.set_ylim(-180, 180)
-	axis_phase.set_yticks(np.arange(-180, 181, 45, ))
-	Phase_plot = Phase * 180 / np.pi
-
-line_phase = axis_phase.plot(
-	Frequency, Phase_plot, '+', label='phase', color='C2')
-
-################################################################################
-
-lns = line_gain + line_phase
-labs = [l.get_label() for l in lns]
-axis_gain.legend(lns, labs, loc=0)
-
-if args.title:
-	plt.title(args.title)
-elif args.input_type == 'table':
-	plt.title(args.data_file)
-else:
-	plt.title(args.scope_data_input)
-
-################################################################################
-
-report_duration('generating plot')
-
-if args.output:
-	plt.savefig(args.output)
-else:
-	plt.show()
+if args.plot:
+	import subprocess
+	subprocess.Popen(['plot-bode', args.output], close_fds=True,
+	                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
