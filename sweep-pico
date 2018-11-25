@@ -28,6 +28,10 @@ parser.add_argument('--sweep', choices=['log', 'linear'],
                     help='sweep type')
 parser.add_argument('--voltage', type=float, default=0.1,
                     help='generator output voltage')
+parser.add_argument('--voltage-boost', type=float, nargs=2, metavar=['boost-low', 'boost-high'],
+                    help='boot voltage at low and high frequencies with first order bandpass response, arguments are low and high cutoff frequency')
+parser.add_argument('--voltage-boost-max', type=float, default=1,
+                    help='maximum boosted voltage')
 
 parser.add_argument('--points', type=int, default=100,
                     help='number of points')
@@ -78,6 +82,7 @@ if True:
 	import numpy as np
 	import picoscope
 	import scipy.optimize
+	import lib.fitgain
 
 ################################################################################
 
@@ -105,13 +110,25 @@ elif args.pico_series == '3000a':
 
 ################################################################################
 
+
+def get_output_voltage(frequency):
+	voltage = args.voltage
+	if args.voltage_boost:
+		voltage /= lib.fitgain.bandpass(frequency, 1, *args.voltage_boost)
+	voltage = min(voltage, args.voltage_boost_max)
+	return voltage
+
+################################################################################
+
+
 voltage_ranges = [50e-3, 100e-3, 200e-3, 500e-3, 1.0, 2.0, 5.0, 10.0, 20.0]
 voltage_ranges = np.array([range for range in voltage_ranges if (
 	range < args.range_max and range > args.range_min)])
 
 name_channels = {'input': args.channel_input, 'output': args.channel_output}
 
-initial_range = np.argmax(args.voltage <= voltage_ranges)
+initial_range = np.argmax(
+	get_output_voltage(args.freq_start) * 1.1 <= voltage_ranges)
 index_current_ranges = {'input': initial_range, 'output': initial_range}
 
 
@@ -204,16 +221,17 @@ with open(args.output, 'w') as file_output:
 
 	for (index, frequency) in enumerate(frequencies):
 		try:
+			voltage_generator = get_output_voltage(frequency)
 
 			scope.setSigGenBuiltInSimple(
-                            pkToPk=args.voltage, frequency=frequency, shots=0xFFFFFF)
+                            pkToPk=voltage_generator * 2, frequency=frequency, shots=0xFFFFFF)
 
 			frequency_sample_set = min(
 				frequency * args.samples / args.periods, args.max_sample_rate)
 			frequency_sample, _ = scope.setSamplingFrequency(
 				frequency_sample_set * 2, args.samples)
 
-			print(f'{index}/{len(frequencies)}\tf: {frequency:0.2f} Hz\tfs: {frequency_sample:0.0f} ({frequency_sample_set:0.0f})')
+			print(f'{index}/{len(frequencies)}\tf: {frequency:0.2f} Hz\tfs: {frequency_sample:0.0f} ({frequency_sample_set:0.0f})\tV_out: {voltage_generator:0.1f}V')
 			time.sleep(max(0.5 / frequency, 0.05))
 
 			for i in range(args.retries):

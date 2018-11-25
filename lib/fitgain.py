@@ -4,7 +4,7 @@ import scipy.optimize
 
 def fit_hybrid(frequency, gain, print_fit=False):
 
-	def bandpass(f, gain, cutoffL, cutoffH, orderL, orderH, b, c, d, e):
+	def bandpass_hybrid(f, gain, cutoffL, cutoffH, orderL, orderH, b, c, d, e):
 		# subtract mean of cutL/H in log space to get better output for gain
 		lf = np.log10(f * np.sqrt(cutoffL / cutoffH))
 
@@ -25,7 +25,7 @@ def fit_hybrid(frequency, gain, print_fit=False):
 
 		return output
 
-	bandfit, _ = scipy.optimize.curve_fit(bandpass, frequency,
+	bandfit, _ = scipy.optimize.curve_fit(bandpass_hybrid, frequency,
                                        gain, (10, 20, 10000, 1, 1, 0, 0, 0, 0), bounds=([0, 5e-1, 5e3, 0.5, 0.5, -1, -1, -1, -1], [500, 5e3, 5e5, 5, 5, 1, 1, 1, 1]))
 
 	if print_fit:
@@ -36,16 +36,16 @@ def fit_hybrid(frequency, gain, print_fit=False):
 					print(f'{label}: {value:0.3f}')
 
 	def gain_function(frequency):
-		return bandpass(frequency, *bandfit)
+		return bandpass_hybrid(frequency, *bandfit)
 
 	return gain_function
 
 
+def bandpass(f, gain, cutoffL, cutoffH, orderL=1, orderH=1):
+	return gain / (np.power(np.abs(1 + 1j * f / cutoffH), orderH) * np.power(np.abs(1 + 1j * cutoffL / f), orderL))
+
+
 def fit_simple(frequency, gain, print_fit=False):
-
-	def bandpass(f, gain, cutoffL, cutoffH, orderL, orderH):
-		return gain / (np.power(np.abs(1 + 1j * f / cutoffH), orderH) * np.power(np.abs(1 + 1j * cutoffL / f), orderL))
-
 	bandfit, _ = scipy.optimize.curve_fit(bandpass, frequency,
                                        gain, (10, 20, 10000, 1, 1), bounds=([0, 5e-1, 5e3, 0.5, 0.5], [500, 5e3, 5e5, 20, 20]))
 
