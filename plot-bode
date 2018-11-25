@@ -7,81 +7,74 @@ import argcomplete
 ################################################################################
 
 parser = argparse.ArgumentParser(
-	description='generates bode plots from time-domain oscilloscope data')
+	description='generates bode plots from time-domain oscilloscope data, create multiple traces by separating multiple "trace" argument groups with dashes "-"')
 
-parser.add_argument('input', help='input file, tab separated')
+parser_group_common = parser.add_argument_group('common')
 
-parser.add_argument('--gain', choices=['ratio', 'dB'], default='ratio',
-                    help='how to plot gain')
-parser.add_argument('--phase', choices=['rad', 'deg'],
-                    help='how to plot phase')
-parser.add_argument('--title',
-                    help='plot title')
+parser_group_common.add_argument('--gain', choices=['ratio', 'dB'], default='ratio',
+                                 help='how to plot gain')
+parser_group_common.add_argument('--phase', choices=['rad', 'deg'],
+                                 help='how to plot phase')
+parser_group_common.add_argument('--title',
+                                 help='plot title')
+parser_group_common.add_argument('--output',
+                                 help='plot output file')
 
-parser.add_argument('--gain-factor-const',
-                    help='constant amplification of buffer amplifier (evaluated as expression, gain will be divided by this factor)')
-parser.add_argument('--gain-factor-fit', action='append',
-                    help='supply one or more (frequency - gain) files to get input referenced plot, gain will be divided by this')
-parser.add_argument('--gain-fit-function', choices=['hybrid', 'simple'], default='hybrid',
-                    help='fit function used for gain (both for gain correction and final plot)')
+parser_group_common.add_argument('--frequency-range', type=float, nargs=2,
+                                 help='min and max frequency for plot')
 
-parser.add_argument('--frequency-range', type=float, nargs=2,
-                    help='min and max frequency for plot')
+parser_group_common.add_argument('--fit-gain', action='store_true',
+                                 help='try to fit a band pass curve to gain')
+parser_group_common.add_argument('--fit-output', action='store_true', default=False,
+                                 help='print result of fit')
 
-parser.add_argument('--output',
-                    help='plot output file')
+parser_group_trace = parser.add_argument_group('trace')
 
-parser.add_argument('--fit-gain', action='store_true',
-                    help='try to fit a band pass curve to gain')
-parser.add_argument('--fit-output', action='store_true', default=False,
-                    help='print result of fit')
+parser_group_trace.add_argument('input', help='input file, tab separated')
 
-################################################################################
+parser_group_trace.add_argument('--label',
+                                help='trace label')
+
+parser_group_trace.add_argument('--gain-factor-const',
+                                help='constant amplification of buffer amplifier (evaluated as expression, gain will be divided by this factor)')
+parser_group_trace.add_argument('--gain-factor-fit', action='append',
+                                help='supply one or more (frequency - gain) files to get input referenced plot, gain will be divided by this')
+parser_group_trace.add_argument('--gain-fit-function', choices=['hybrid', 'simple'], default='hybrid',
+                                help='fit function used for gain (both for gain correction and final plot)')
 
 argcomplete.autocomplete(parser)
-args = parser.parse_args()
 
-# prevent autopep8 from moving these imports to the front
+################################################################################
+# split arguments into groups separated by dashes '-', treat first group as both general args and first trace
+if True:
+	import sys
+
+args_raw = sys.argv[1:]
+args_split = []
+
+while '-' in args_raw:
+	index_split = args_raw.index('-')
+	args_split.append(args_raw[0:index_split])
+	args_raw = args_raw[index_split + 1:]
+args_split.append(args_raw)
+
+args = parser.parse_args(args_split[0])
+
+traces = [parser.parse_args(args_trace_raw)
+          for args_trace_raw in args_split]
+
+################################################################################
+# prevent autopep8 from moving this to the front (speeds up argcomplete and parser)
 if True:
 	import numpy as np
 	import matplotlib.pyplot as plt
 	import lib.fitgain
 	import matplotlib.ticker
 
-	gain_fit_creator = lib.fitgain.fit_lookup[args.gain_fit_function]
-
-################################################################################
-
-(frequency, gain, phase) = np.loadtxt(args.input, unpack=True)
-
-if args.gain_factor_const:
-	gain /= eval(args.gain_factor_const)
-
-for gain_file in args.gain_factor_fit or []:
-	(frequency_fit, gain_fit) = np.loadtxt(
-		gain_file, unpack=True, usecols=(0, 1))
-	gain_fitfunc = gain_fit_creator(frequency_fit, gain_fit)
-	gain /= gain_fitfunc(frequency)
-
-################################################################################
-
-if args.fit_gain:
-	gain_fitfunc = gain_fit_creator(frequency, gain, args.fit_output)
-
-	if args.frequency_range:
-		f_log_min = np.log10(args.frequency_range[0])
-		f_log_max = np.log10(args.frequency_range[1])
-	else:
-		f_log_min = np.log10(np.min(frequency))
-		f_log_max = np.log10(np.max(frequency))
-
-	frequency_fit = np.logspace(f_log_min, f_log_max, 100)
-
-	gain_fit = gain_fitfunc(frequency_fit)
-
 ################################################################################
 
 lines = []
+
 axis_gain = plt.gca()
 axis_gain.grid(which='both')
 axis_gain.set_xscale("log", nonposx='clip')
@@ -92,40 +85,79 @@ if args.frequency_range:
 
 if args.gain == 'dB':
 	axis_gain.set_ylabel('gain (dB)')
-	lines += axis_gain.plot(frequency, 20 * np.log10(gain),
-                         '+', label='gain', color='C0')
 
-	if args.fit_gain:
-		lines += axis_gain.plot(frequency_fit, 20 * np.log10(gain_fit),
-                          '-', label='fit', color='red')
+	def func_gain_to_plot(gain): return 20 * np.log10(gain)
 
 elif args.gain == 'ratio':
 	axis_gain.set_ylabel('gain')
 	axis_gain.set_yscale("log", nonposy='clip')
-	lines += axis_gain.plot(frequency, gain, '+', label='gain', color='C0')
 
-	if args.fit_gain:
-		lines += axis_gain.plot(frequency_fit, gain_fit,
-                          '-', label='fit', color='red')
-
-################################################################################
+	def func_gain_to_plot(gain): return gain
 
 if args.phase:
 	axis_phase = axis_gain.twinx()
 	axis_phase.set_ylabel('phase')
-
 	if args.phase == 'rad':
 		axis_phase.set_ylim(-np.pi, np.pi)
-		lines.append(axis_phase.plot(
-			frequency, phase, '+', label='phase', color='C1'))
 
+		def func_phase_to_plot(phase): return phase
 	elif args.phase == 'deg':
 		axis_phase.set_ylim(-180, 180)
 		axis_phase.set_yticks(np.arange(-180, 181, 45, ))
-		lines.append(axis_phase.plot(
-			frequency, phase * 180 / pi, '+', label='phase', color='C1'))
 
-################################################################################
+		def func_phase_to_plot(phase): return phase * 180 / np.pi
+
+for trace in traces:
+	(frequency, gain, phase) = np.loadtxt(trace.input, unpack=True)
+
+	if trace.gain_factor_const:
+		gain /= eval(trace.gain_factor_const)
+
+	for gain_file in trace.gain_factor_fit or []:
+		(frequency_fit, gain_fit) = np.loadtxt(
+			gain_file, unpack=True, usecols=(0, 1))
+		gain_fitfunc = lib.fitgain.fit_lookup[trace.gain_fit_function](
+			frequency_fit, gain_fit)
+		gain /= gain_fitfunc(frequency)
+
+	############################################################################
+
+	label = trace.label or trace.input
+
+	############################################################################
+
+	if args.fit_gain:
+		gain_fitfunc = lib.fitgain.fit_lookup[trace.gain_fit_function](
+			frequency, gain, args.fit_output)
+
+		if args.frequency_range:
+			f_log_min = np.log10(args.frequency_range[0])
+			f_log_max = np.log10(args.frequency_range[1])
+		else:
+			f_log_min = np.log10(np.min(frequency))
+			f_log_max = np.log10(np.max(frequency))
+
+		frequency_fit = np.logspace(f_log_min, f_log_max, 100)
+
+		gain_fit = gain_fitfunc(frequency_fit)
+
+	############################################################################
+
+	line_gain, = axis_gain.plot(frequency, func_gain_to_plot(gain),
+                             '+', label=f'{label} (gain)')
+	lines.append(line_gain)
+
+	if args.fit_gain:
+		lines += axis_gain.plot(frequency_fit, func_gain_to_plot(gain_fit),
+                          '-', color='red')
+
+	################################################################################
+
+	if args.phase:
+		lines += axis_phase.plot(
+			frequency, func_phase_to_plot(phase), 's', label=f'{label} (phase)', color=line_gain.get_color())
+
+	################################################################################
 
 labels = [l.get_label() for l in lines]
 axis_gain.legend(lines, labels, loc=0)
@@ -138,8 +170,6 @@ axis_gain.yaxis.set_minor_formatter(
 
 if args.title:
 	plt.title(args.title)
-else:
-	plt.title(args.input)
 
 ################################################################################
 
