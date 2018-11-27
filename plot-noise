@@ -17,7 +17,7 @@ parser_group_common.add_argument('--resolution', type=int,
 parser_group_common.add_argument('--title',
                                  help='plot title')
 parser_group_common.add_argument('--size', metavar=['width', 'height'], type=float, nargs=2,
-                                 help='plot size (cm)')
+                                 help='plot size (mm)')
 parser_group_common.add_argument('--reference', default='out',
                                  help='input or output referenced')
 parser_group_common.add_argument('--output',
@@ -154,7 +154,7 @@ def main():
 	if args.output:
 		if args.size:
 			fig = matplotlib.pyplot.gcf()
-			fig.set_size_inches(args.size[0] / 2.54, args.size[1] / 2.54)
+			fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)
 		plt.savefig(args.output)
 	else:
 		plt.show()

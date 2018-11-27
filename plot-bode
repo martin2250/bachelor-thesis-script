@@ -7,7 +7,7 @@ import argcomplete
 ################################################################################
 
 parser = argparse.ArgumentParser(
-    description='generates bode plots from time-domain oscilloscope data, create multiple traces by separating multiple "trace" argument groups with dashes "-"')
+	description='generates bode plots from time-domain oscilloscope data, create multiple traces by separating multiple "trace" argument groups with dashes "-"')
 
 parser_group_common = parser.add_argument_group('common')
 
@@ -18,13 +18,14 @@ parser_group_common.add_argument('--phase', choices=['rad', 'deg'],
 parser_group_common.add_argument('--title',
                                  help='plot title')
 parser_group_common.add_argument(
-    '--size', metavar=['width', 'height'], type=float, nargs=2, help='plot size (cm)')
+	'--size', metavar=['width', 'height'], type=float, nargs=2, help='plot size (mm)')
 parser_group_common.add_argument('--output',
                                  help='plot output file')
 
 parser_group_common.add_argument('--frequency-range', type=float, nargs=2,
                                  help='min and max frequency for plot')
-
+parser_group_common.add_argument('--fit-gain-labels', action='store_true',
+                                 help='add fit parameters to label')
 parser_group_common.add_argument('--fit-gain', action='store_true',
                                  help='try to fit a band pass curve to gain')
 parser_group_common.add_argument('--fit-output', action='store_true', default=False,
@@ -49,17 +50,17 @@ argcomplete.autocomplete(parser)
 ################################################################################
 # split arguments into groups separated by dashes '-', treat first group as both general args and first trace
 if True:
-    import sys
+	import sys
 
 args_raw = sys.argv[1:]
 args_split = []
 
 while '-' in args_raw:
-    index_split = args_raw.index('-')
-    args_split.append(args_raw[0:index_split])
-    args_raw = args_raw[index_split + 1:]
+	index_split = args_raw.index('-')
+	args_split.append(args_raw[0:index_split])
+	args_raw = args_raw[index_split + 1:]
 if args_raw:
-    args_split.append(args_raw)
+	args_split.append(args_raw)
 
 args = parser.parse_args(args_split[0])
 
@@ -69,10 +70,10 @@ traces = [parser.parse_args(args_trace_raw)
 ################################################################################
 # prevent autopep8 from moving this to the front (speeds up argcomplete and parser)
 if True:
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import lib.fitgain
-    import matplotlib.ticker
+	import numpy as np
+	import matplotlib.pyplot as plt
+	import lib.fitgain
+	import matplotlib.ticker
 
 ################################################################################
 
@@ -84,102 +85,102 @@ axis_gain.set_xscale("log", nonposx='clip')
 axis_gain.set_xlabel('frequency (Hz)')
 
 if args.frequency_range:
-    axis_gain.set_xlim(*args.frequency_range)
+	axis_gain.set_xlim(*args.frequency_range)
 
 if args.gain == 'dB':
-    axis_gain.set_ylabel('gain (dB)')
+	axis_gain.set_ylabel('gain (dB)')
 
-    def func_gain_to_plot(gain): return 20 * np.log10(gain)
+	def func_gain_to_plot(gain): return 20 * np.log10(gain)
 
 elif args.gain == 'ratio':
-    axis_gain.set_ylabel('gain')
-    axis_gain.set_yscale("log", nonposy='clip')
+	axis_gain.set_ylabel('gain')
+	axis_gain.set_yscale("log", nonposy='clip')
 
-    def func_gain_to_plot(gain): return gain
+	def func_gain_to_plot(gain): return gain
 
 if args.phase:
-    axis_phase = axis_gain.twinx()
-    axis_phase.set_ylabel('phase')
-    if args.phase == 'rad':
-        axis_phase.set_ylim(-np.pi, np.pi)
+	axis_phase = axis_gain.twinx()
+	axis_phase.set_ylabel('phase')
+	if args.phase == 'rad':
+		axis_phase.set_ylim(-np.pi, np.pi)
 
-        def func_phase_to_plot(phase): return phase
-    elif args.phase == 'deg':
-        axis_phase.set_ylim(-180, 180)
-        axis_phase.set_yticks(np.arange(-180, 181, 45, ))
+		def func_phase_to_plot(phase): return phase
+	elif args.phase == 'deg':
+		axis_phase.set_ylim(-180, 180)
+		axis_phase.set_yticks(np.arange(-180, 181, 45, ))
 
-        def func_phase_to_plot(phase): return phase * 180 / np.pi
+		def func_phase_to_plot(phase): return phase * 180 / np.pi
 
 for trace in traces:
-    (frequency, gain, phase) = np.loadtxt(trace.input, unpack=True)
+	(frequency, gain, phase) = np.loadtxt(trace.input, unpack=True)
 
-    if trace.gain_factor_const:
-        gain /= eval(trace.gain_factor_const)
+	if trace.gain_factor_const:
+		gain /= eval(trace.gain_factor_const)
 
-    for gain_file in trace.gain_factor_fit or []:
-        (frequency_fit, gain_fit) = np.loadtxt(
-            gain_file, unpack=True, usecols=(0, 1))
-        gain_fitfunc = lib.fitgain.fit_lookup[trace.gain_fit_function](
-            frequency_fit, gain_fit)
-        gain /= gain_fitfunc(frequency)
+	for gain_file in trace.gain_factor_fit or []:
+		(frequency_fit, gain_fit) = np.loadtxt(
+			gain_file, unpack=True, usecols=(0, 1))
+		gain_fitfunc = lib.fitgain.fit_lookup[trace.gain_fit_function](
+			frequency_fit, gain_fit)
+		gain /= gain_fitfunc(frequency)
 
-    ############################################################################
+	############################################################################
 
-    label = trace.label or trace.input
+	label = trace.label or trace.input
 
-    ############################################################################
+	############################################################################
+	fit_label = ''
+	if args.fit_gain:
+		gain_fitfunc, gain_fitresult = lib.fitgain.fit_lookup[trace.gain_fit_function](
+			frequency, gain, args.fit_output, return_result=True)
+		fit_label = f'A: {gain_fitresult.gain:0.1f}'
 
-    if args.fit_gain:
-        gain_fitfunc = lib.fitgain.fit_lookup[trace.gain_fit_function](
-            frequency, gain, args.fit_output)
+		if args.frequency_range:
+			f_log_min = np.log10(args.frequency_range[0])
+			f_log_max = np.log10(args.frequency_range[1])
+		else:
+			f_log_min = np.log10(np.min(frequency))
+			f_log_max = np.log10(np.max(frequency))
 
-        if args.frequency_range:
-            f_log_min = np.log10(args.frequency_range[0])
-            f_log_max = np.log10(args.frequency_range[1])
-        else:
-            f_log_min = np.log10(np.min(frequency))
-            f_log_max = np.log10(np.max(frequency))
+		frequency_fit = np.logspace(f_log_min, f_log_max, 100)
+		gain_fit = gain_fitfunc(frequency_fit)
 
-        frequency_fit = np.logspace(f_log_min, f_log_max, 100)
+	############################################################################
 
-        gain_fit = gain_fitfunc(frequency_fit)
+	line_gain, = axis_gain.plot(frequency, func_gain_to_plot(gain),
+                             '+', label=f'{label} {"(gain)" if args.phase else ""} {fit_label if args.fit_gain_labels else ""}')
+	lines.append(line_gain)
 
-    ############################################################################
+	if args.fit_gain:
+		axis_gain.plot(frequency_fit, func_gain_to_plot(gain_fit),
+                 '-', color='red', lw=1)
 
-    line_gain, = axis_gain.plot(frequency, func_gain_to_plot(gain),
-                                '+', label=f'{label} {'(gain)' if args.phase else ''}')
-    lines.append(line_gain)
+	################################################################################
 
-    if args.fit_gain:
-        lines += axis_gain.plot(frequency_fit, func_gain_to_plot(gain_fit),
-                                '-', color='red')
+	if args.phase:
+		lines += axis_phase.plot(
+			frequency, func_phase_to_plot(phase), 's', label=f'{label} (phase)', color=line_gain.get_color())
 
-    ################################################################################
-
-    if args.phase:
-        lines += axis_phase.plot(
-            frequency, func_phase_to_plot(phase), 's', label=f'{label} (phase)', color=line_gain.get_color())
-
-    ################################################################################
+	################################################################################
 
 labels = [l.get_label() for l in lines]
 axis_gain.legend(lines, labels, loc=0)
 
 axis_gain.yaxis.set_major_formatter(
-    matplotlib.ticker.FormatStrFormatter('%0.1f'))
+	matplotlib.ticker.FormatStrFormatter('%0.1f'))
 axis_gain.yaxis.set_minor_formatter(
-    matplotlib.ticker.FormatStrFormatter('%0.1f'))
+	matplotlib.ticker.FormatStrFormatter('%0.1f'))
 
 
 if args.title:
-    plt.title(args.title)
+	plt.title(args.title)
 
 ################################################################################
 
 if args.output:
-    if args.size:
-        fig = matplotlib.pyplot.gcf()
-        fig.set_size_inches(args.size[0] / 2.54, args.size[1] / 2.54)
-    plt.savefig(args.output)
+	if args.size:
+		fig = matplotlib.pyplot.gcf()
+		fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)
+	plt.savefig(args.output)
 else:
-    plt.show()
+	plt.show()
