@@ -220,34 +220,37 @@ with open(args.output, 'w') as file_output:
 	                          np.log10(args.freq_stop), args.points)
 
 	for (index, frequency) in enumerate(frequencies):
+		voltage_generator = get_output_voltage(frequency)
+
+		scope.setSigGenBuiltInSimple(
+                        pkToPk=voltage_generator * 2, frequency=frequency, shots=0xFFFFFF)
+
+		frequency_sample_set = min(
+			frequency * args.samples / args.periods, args.max_sample_rate)
+		frequency_sample, _ = scope.setSamplingFrequency(
+			frequency_sample_set, args.samples)
+
+		print(f'{index}/{len(frequencies)}\tf: {frequency:0.2f} Hz\tfs: {frequency_sample:0.0f} ({frequency_sample_set:0.0f})\tV_out: {voltage_generator:0.1f}V')
+		time.sleep(max(0.5 / frequency, 0.05))
+
 		try:
-			voltage_generator = get_output_voltage(frequency)
-
-			scope.setSigGenBuiltInSimple(
-                            pkToPk=voltage_generator * 2, frequency=frequency, shots=0xFFFFFF)
-
-			frequency_sample_set = min(
-				frequency * args.samples / args.periods, args.max_sample_rate)
-			frequency_sample, _ = scope.setSamplingFrequency(
-				frequency_sample_set * 2, args.samples)
-
-			print(f'{index}/{len(frequencies)}\tf: {frequency:0.2f} Hz\tfs: {frequency_sample:0.0f} ({frequency_sample_set:0.0f})\tV_out: {voltage_generator:0.1f}V')
-			time.sleep(max(0.5 / frequency, 0.05))
-
 			for i in range(args.retries):
-				scope.runBlock()
-				scope.waitReady()
+				try:
+					scope.runBlock()
+					scope.waitReady()
 
-				voltage_input, overflow_input = scope.getDataV(
-                                    name_channels['input'], returnOverflow=True)
-				voltage_output, overflow_output = scope.getDataV(
-                                    name_channels['output'], returnOverflow=True)
+					voltage_input, overflow_input = scope.getDataV(
+	                                    name_channels['input'], returnOverflow=True)
+					voltage_output, overflow_output = scope.getDataV(
+	                                    name_channels['output'], returnOverflow=True)
 
-				retry_input = checkRange('input', voltage_input, overflow_input)
-				retry_output = checkRange('output', voltage_output, overflow_output)
+					retry_input = checkRange('input', voltage_input, overflow_input)
+					retry_output = checkRange('output', voltage_output, overflow_output)
 
-				if not retry_input and not retry_output:
-					break
+					if not retry_input and not retry_output:
+						break
+				except KeyboardInterrupt:
+					input('paused, press enter to continue')
 
 			if args.invert:
 				voltage_output = -voltage_output
@@ -296,6 +299,7 @@ with open(args.output, 'w') as file_output:
 
 				file_output.write(
                                     f'{freq:0.3f}\t{gain:0.3f}\t{phase:0.3f}\n')
+
 		except Exception as e:
 			print(e)
 

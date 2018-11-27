@@ -85,7 +85,8 @@ def process_file(file):
     frequency, power = scipy.signal.welch(
         voltage, sample_rate, nperseg=args.resolution)
 
-    return power, frequency, sample_rate
+
+return power[1:], frequency[1:], sample_rate
 
 ################################################################################
 
