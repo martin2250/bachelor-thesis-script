@@ -147,7 +147,7 @@ for trace in traces:
     ############################################################################
 
     line_gain, = axis_gain.plot(frequency, func_gain_to_plot(gain),
-                                '+', label=f'{label} (gain)')
+                                '+', label=f'{label} {'(gain)' if args.phase else ''}')
     lines.append(line_gain)
 
     if args.fit_gain:
