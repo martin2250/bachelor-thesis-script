@@ -5,6 +5,7 @@ import sys
 import numpy as np
 import usb.core
 import usb.util
+import os.path
 
 idVendor = 0x1a86
 idProduct = 0xe008
