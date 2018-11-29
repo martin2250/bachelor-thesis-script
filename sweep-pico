@@ -23,9 +23,13 @@ parser.add_argument('channel_input', metavar='channel-input', choices=list_chann
 parser.add_argument('channel_output', metavar='channel-output', choices=list_channels,
                     help='name of output channel')
 
+parser.add_argument('--append', action='store_true',
+                    help='append to file instead of overwriting')
 parser.add_argument('--sweep', choices=['log', 'linear'],
                     default='log',
                     help='sweep type')
+parser.add_argument('--reverse', action='store_true',
+                    help='start at high frequency')
 parser.add_argument('--voltage', type=float, default=0.1,
                     help='generator output voltage')
 parser.add_argument('--voltage-boost', type=float, nargs=2, metavar=['boost-low', 'boost-high'],
@@ -86,7 +90,7 @@ if True:
 
 ################################################################################
 
-if not args.yes and os.path.exists(args.output):
+if not args.yes and not args.append and os.path.exists(args.output):
 	response = input('output file exists, overwrite? (y/N)')
 	if response != 'y':
 		exit(0)
@@ -212,12 +216,15 @@ def fitsine(T, U, freq_approx):
 ################################################################################
 
 
-with open(args.output, 'w') as file_output:
-	file_output.write('# ' + ' '.join(sys.argv) +
-	                  '\n# Frequency f (Hz)\n# Gain a\n# Phase p (rad)\n# f\ta\tp\n')
+with open(args.output, 'wa' if args.append else 'w') as file_output:
+	file_output.write('# ' + ' '.join(sys.argv)
+	                  + '\n# Frequency f (Hz)\n# Gain a\n# Phase p (rad)\n# f\ta\tp\n')
 
 	frequencies = np.logspace(np.log10(args.freq_start),
 	                          np.log10(args.freq_stop), args.points)
+
+	if args.reverse:
+		frequencies = np.flip(frequencies)
 
 	for (index, frequency) in enumerate(frequencies):
 		voltage_generator = get_output_voltage(frequency)

@@ -22,6 +22,8 @@ parser_group_common.add_argument('--reference', default='out',
                                  help='input or output referenced')
 parser_group_common.add_argument('--output',
                                  help='output file')
+parser_group_common.add_argument('--alpha', type=float, default=1,
+                                 help='trace opacity (0-1)')
 
 parser_group_trace = parser.add_argument_group('trace')
 
@@ -134,7 +136,7 @@ def main():
             voltage /= gain_fitfunc(frequency)
 
         ax.plot(frequency, voltage * 1e6,
-                label=trace.label or ',\n'.join(trace.files))
+                label=trace.label or ',\n'.join(trace.files), alpha=args.alpha)
 
     ############################################################################
 
