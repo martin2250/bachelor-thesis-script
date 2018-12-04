@@ -146,10 +146,12 @@ def main():
 	ax.grid(which='both')
 	for subax in [ax.xaxis, ax.yaxis]:
 		subax.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%g'))
-	ax.set_ylabel('$\\sqrt{J_{ss}^{%s}(f)}$ (µV)' % args.reference)
+	ax.set_ylabel(
+		r'$\sqrt{J_{ss}^{%s}(f)}$ ($\si{\micro\volt}$)' % args.reference)
 	ax.set_xlabel('$f$ (Hz)')
 	ax.legend()
-	ax.set_title(args.title or 'noise density')
+	if args.title:
+		ax.set_title(args.title)
 	plt.legend()
 
 	############################################################################
