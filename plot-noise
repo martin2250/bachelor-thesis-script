@@ -7,7 +7,7 @@ import argcomplete
 ################################################################################
 
 parser = argparse.ArgumentParser(
-    description='generates power density plots from time-domain oscilloscope data, create multiple traces by separating multiple "trace" argument groups with dashes "-"')
+	description='generates power density plots from time-domain oscilloscope data, create multiple traces by separating multiple "trace" argument groups with dashes "-"')
 
 
 parser_group_common = parser.add_argument_group('common')
@@ -45,17 +45,17 @@ argcomplete.autocomplete(parser)
 ################################################################################
 # split arguments into groups separated by dashes '-', treat first group as both general args and first trace
 if True:
-    import sys
+	import sys
 
 args_raw = sys.argv[1:]
 args_split = []
 
 while '-' in args_raw:
-    index_split = args_raw.index('-')
-    args_split.append(args_raw[0:index_split])
-    args_raw = args_raw[index_split + 1:]
+	index_split = args_raw.index('-')
+	args_split.append(args_raw[0:index_split])
+	args_raw = args_raw[index_split + 1:]
 if args_raw:
-    args_split.append(args_raw)
+	args_split.append(args_raw)
 
 args = parser.parse_args(args_split[0])
 
@@ -65,104 +65,105 @@ traces = [parser.parse_args(args_trace_raw)
 ################################################################################
 # prevent autopep8 from moving this to the front (speeds up argcomplete and parser)
 if True:
-    import os
-    from dataclasses import dataclass
-    from multiprocessing import Pool
+	import os
+	from dataclasses import dataclass
+	from multiprocessing import Pool
 
-    import matplotlib.pyplot as plt
-    import matplotlib.ticker
-    import numpy as np
-    import scipy.signal
+	import matplotlib.pyplot as plt
+	import matplotlib.ticker
+	import numpy as np
+	import scipy.signal
 
-    import lib.fitgain
-    import lib.tekdecode
+	import lib.fitgain
+	import lib.tekdecode
+	import lib.pyplotrc
 
 ################################################################################
 # calculate noise density from a single file
 
 
 def process_file(file):
-    voltage, sample_rate, length = lib.tekdecode.loadFile(file)
+	voltage, sample_rate, length = lib.tekdecode.loadFile(file)
 
-    frequency, power = scipy.signal.welch(
-        voltage, sample_rate, nperseg=args.resolution)
-    return power[1:], frequency[1:], sample_rate
+	frequency, power = scipy.signal.welch(
+		voltage, sample_rate, nperseg=args.resolution)
+	return power[1:], frequency[1:], sample_rate
 
 ################################################################################
 
 
 def main():
-    # create a flat list of all files from all traces, add a list of file indices to each trace
-    files = []
+	# create a flat list of all files from all traces, add a list of file indices to each trace
+	files = []
 
-    for trace in traces:
-        trace.file_mapping = np.arange(
-            len(files), len(files) + len(trace.files))
-        files += trace.files
+	for trace in traces:
+		trace.file_mapping = np.arange(
+			len(files), len(files) + len(trace.files))
+		files += trace.files
 
-    ############################################################################
-    # process all files
-    pool = Pool()
-    output = pool.map(process_file, files)
-    pool.close()
-    pool.join()
+	############################################################################
+	# process all files
+	pool = Pool()
+	output = pool.map(process_file, files)
+	pool.close()
+	pool.join()
 
-    power, frequency, sample_rate = zip(*output)
-    frequency = frequency[0]
-    power = np.array(power)
+	power, frequency, sample_rate = zip(*output)
+	frequency = frequency[0]
+	power = np.array(power)
 
-    ############################################################################
-    # check that sample rates match
-    if sample_rate.count(sample_rate[0]) != len(sample_rate):
-        print('files have different saple rates!')
-        exit(1)
+	############################################################################
+	# check that sample rates match
+	if sample_rate.count(sample_rate[0]) != len(sample_rate):
+		print('files have different saple rates!')
+		exit(1)
 
-    ############################################################################
-    # plot everything
-    ax = plt.gca()
+	############################################################################
+	# plot everything
+	ax = plt.gca()
 
-    for trace in traces:
-        power_mean = np.mean(power[trace.file_mapping], axis=0)
-        voltage = np.sqrt(power_mean)
+	for trace in traces:
+		power_mean = np.mean(power[trace.file_mapping], axis=0)
+		voltage = np.sqrt(power_mean)
 
-        if trace.gain_factor_const:
-            voltage /= eval(trace.gain_factor_const)
+		if trace.gain_factor_const:
+			voltage /= eval(trace.gain_factor_const)
 
-        for gain_file in trace.gain_factor_fit or []:
-            (frequency_fit, gain_fit) = np.loadtxt(
-                gain_file, unpack=True, usecols=(0, 1))
-            gain_fitfunc = lib.fitgain.fit_lookup[trace.gain_fit_function](
-                frequency_fit, gain_fit)
-            voltage /= gain_fitfunc(frequency)
+		for gain_file in trace.gain_factor_fit or []:
+			(frequency_fit, gain_fit) = np.loadtxt(
+				gain_file, unpack=True, usecols=(0, 1))
+			gain_fitfunc = lib.fitgain.fit_lookup[trace.gain_fit_function](
+				frequency_fit, gain_fit)
+			voltage /= gain_fitfunc(frequency)
 
-        ax.plot(frequency, voltage * 1e6,
-                label=trace.label or ',\n'.join(trace.files), alpha=args.alpha)
+		ax.plot(frequency, voltage * 1e6,
+                    label=trace.label or ',\n'.join(trace.files), alpha=args.alpha)
 
-    ############################################################################
+	############################################################################
 
-    ax.set_xscale("log", nonposx='clip')
-    ax.set_yscale("log", nonposy='clip')
-    ax.grid(which='both')
-    for subax in [ax.xaxis, ax.yaxis]:
-        subax.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%g'))
-    ax.set_ylabel('$\\sqrt{J_{ss}^{%s}(f)}$ (µV)' % args.reference)
-    ax.set_xlabel('$f$ (Hz)')
-    ax.legend()
-    ax.set_title(args.title or 'noise density')
-    plt.legend()
+	ax.set_xscale("log", nonposx='clip')
+	ax.set_yscale("log", nonposy='clip')
+	ax.grid(which='both')
+	for subax in [ax.xaxis, ax.yaxis]:
+		subax.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%g'))
+	ax.set_ylabel('$\\sqrt{J_{ss}^{%s}(f)}$ (µV)' % args.reference)
+	ax.set_xlabel('$f$ (Hz)')
+	ax.legend()
+	ax.set_title(args.title or 'noise density')
+	plt.legend()
 
-    ############################################################################
+	############################################################################
 
-    if args.output:
-        if args.size:
-            fig = matplotlib.pyplot.gcf()
-            fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)
-        plt.savefig(args.output)
-    else:
-        plt.show()
+	if args.output:
+		if args.size:
+			fig = plt.gcf()
+			fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)
+		plt.savefig(args.output)
+	else:
+		plt.show()
 
 ################################################################################
 
 
 if __name__ == "__main__":
-    main()
+	main()

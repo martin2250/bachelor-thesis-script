@@ -72,8 +72,10 @@ traces = [parser.parse_args(args_trace_raw)
 if True:
 	import numpy as np
 	import matplotlib.pyplot as plt
-	import lib.fitgain
 	import matplotlib.ticker
+	import lib.fitgain
+	import lib.pyplotrc
+
 
 ################################################################################
 
