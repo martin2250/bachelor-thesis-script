@@ -180,6 +180,8 @@ if args.title:
 ################################################################################
 
 if args.output:
+	if args.output.endswith('.pgf'):
+		lib.pyplotrc.plot_setup_pgf()
 	if args.size:
 		fig = matplotlib.pyplot.gcf()
 		fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)

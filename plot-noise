@@ -22,6 +22,8 @@ parser_group_common.add_argument('--reference', default='out',
                                  help='input or output referenced')
 parser_group_common.add_argument('--output',
                                  help='output file')
+parser_group_common.add_argument('--no-cache', action='store_true',
+                                 help='disable fft caching')
 parser_group_common.add_argument('--alpha', type=float, default=1,
                                  help='trace opacity (0-1)')
 
@@ -83,10 +85,26 @@ if True:
 
 
 def process_file(file):
+	file_cache = file + f'.{args.resolution}.fft.npz'
+
+	if not args.no_cache and os.path.isfile(file_cache):
+		try:
+			data = np.load(file_cache)
+			power = data['power']
+			sample_rate = data['sample_rate']
+			frequency = np.linspace(0, sample_rate / 2, power.size)
+			return power[1:], frequency[1:], sample_rate
+		except Exception as e:
+			print(f'failed to load cached fft for {file}\n{e}')
+
 	voltage, sample_rate, length = lib.tekdecode.loadFile(file)
 
 	frequency, power = scipy.signal.welch(
 		voltage, sample_rate, nperseg=args.resolution)
+
+	if not args.no_cache:
+		np.savez_compressed(file_cache, power=power, sample_rate=sample_rate)
+
 	return power[1:], frequency[1:], sample_rate
 
 ################################################################################
@@ -157,6 +175,8 @@ def main():
 	############################################################################
 
 	if args.output:
+		if args.output.endswith('.pgf'):
+			lib.pyplotrc.plot_setup_pgf()
 		if args.size:
 			fig = plt.gcf()
 			fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)
