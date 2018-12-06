@@ -139,6 +139,7 @@ def main():
 	############################################################################
 	# plot everything
 	ax = plt.gca()
+	use_legend = False
 
 	for trace in traces:
 		power_mean = np.mean(power[trace.file_mapping], axis=0)
@@ -153,9 +154,13 @@ def main():
 			gain_fitfunc = lib.fitgain.fit_lookup[trace.gain_fit_function](
 				frequency_fit, gain_fit)
 			voltage /= gain_fitfunc(frequency)
-
+		label = trace.label if trace.label is not None else ',\n'.join(trace.files)
+		if label:
+			use_legend = True
+		else:
+			label = None
 		ax.plot(frequency, voltage * 1e6,
-                    label=trace.label or ',\n'.join(trace.files), alpha=args.alpha)
+                    label=label, alpha=args.alpha)
 
 	############################################################################
 
@@ -167,20 +172,18 @@ def main():
 	ax.set_ylabel(
 		r'$\sqrt{J_{ss}^{%s}(f)}$ ($\si{\micro\volt}$)' % args.reference)
 	ax.set_xlabel('$f$ (Hz)')
-	ax.legend()
+	if use_legend:
+		ax.legend()
 	if args.title:
 		ax.set_title(args.title)
-	plt.legend()
 
 	############################################################################
 
 	if args.output:
-		if args.output.endswith('.pgf'):
-			lib.pyplotrc.plot_setup_pgf()
 		if args.size:
 			fig = plt.gcf()
 			fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)
-		plt.savefig(args.output)
+		plt.savefig(args.output, bbox_inches="tight", pad_inches=0)
 	else:
 		plt.show()
 

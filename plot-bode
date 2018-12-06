@@ -113,6 +113,8 @@ if args.phase:
 
 		def func_phase_to_plot(phase): return phase * 180 / np.pi
 
+use_legend = False
+
 for trace in traces:
 	(frequency, gain, phase) = np.loadtxt(trace.input, unpack=True)
 
@@ -128,7 +130,11 @@ for trace in traces:
 
 	############################################################################
 
-	label = trace.label or trace.input
+	label = trace.label if trace.label is not None else trace.input
+	if label:
+		use_legend = True
+	else:
+		label = None
 
 	############################################################################
 	fit_label = ''
@@ -150,7 +156,7 @@ for trace in traces:
 	############################################################################
 
 	line_gain, = axis_gain.plot(frequency, func_gain_to_plot(gain),
-                             '+', label=f'{label} {"(gain)" if args.phase else ""} {fit_label if args.fit_gain_labels else ""}')
+                             '+', label=label)
 	lines.append(line_gain)
 
 	if args.fit_gain:
@@ -165,8 +171,9 @@ for trace in traces:
 
 	################################################################################
 
-labels = [l.get_label() for l in lines]
-axis_gain.legend(lines, labels, loc=0)
+if use_legend:
+	labels = [l.get_label() for l in lines]
+	axis_gain.legend(lines, labels, loc=0)
 
 axis_gain.yaxis.set_major_formatter(
 	matplotlib.ticker.FormatStrFormatter('%0.1f'))
@@ -180,11 +187,9 @@ if args.title:
 ################################################################################
 
 if args.output:
-	if args.output.endswith('.pgf'):
-		lib.pyplotrc.plot_setup_pgf()
 	if args.size:
 		fig = matplotlib.pyplot.gcf()
 		fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)
-	plt.savefig(args.output)
+	plt.savefig(args.output, bbox_inches="tight", pad_inches=0)
 else:
 	plt.show()

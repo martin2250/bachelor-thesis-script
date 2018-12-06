@@ -8,9 +8,3 @@ matplotlib.rcParams['pgf.preamble'] = matplotlib.rcParams['text.latex.preamble']
 	r'\usepackage{amssymb}',
 	r'\usepackage{siunitx}'
 ]
-
-
-def plot_setup_pgf():
-	# prevent x axis label being cut off
-	matplotlib.rcParams['pgf.rcfonts'] = True
-	matplotlib.use('pgf')
