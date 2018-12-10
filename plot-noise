@@ -183,7 +183,7 @@ def main():
 		if args.size:
 			fig = plt.gcf()
 			fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)
-		plt.savefig(args.output, bbox_inches="tight", pad_inches=0)
+		plt.savefig(args.output, bbox_inches="tight", pad_inches=0.02)
 	else:
 		plt.show()
 

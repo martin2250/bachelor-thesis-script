@@ -84,18 +84,18 @@ lines = []
 axis_gain = plt.gca()
 axis_gain.grid(which='both')
 axis_gain.set_xscale("log", nonposx='clip')
-axis_gain.set_xlabel('frequency (Hz)')
+axis_gain.set_xlabel('Frequenz (Hz)')
 
 if args.frequency_range:
 	axis_gain.set_xlim(*args.frequency_range)
 
 if args.gain == 'dB':
-	axis_gain.set_ylabel('gain (dB)')
+	axis_gain.set_ylabel('Verstärkung (dB)')
 
 	def func_gain_to_plot(gain): return 20 * np.log10(gain)
 
 elif args.gain == 'ratio':
-	axis_gain.set_ylabel('gain')
+	axis_gain.set_ylabel('Verstärkung')
 	axis_gain.set_yscale("log", nonposy='clip')
 
 	def func_gain_to_plot(gain): return gain
@@ -190,6 +190,6 @@ if args.output:
 	if args.size:
 		fig = matplotlib.pyplot.gcf()
 		fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)
-	plt.savefig(args.output, bbox_inches="tight", pad_inches=0)
+	plt.savefig(args.output, bbox_inches="tight", pad_inches=0.02)
 else:
 	plt.show()
