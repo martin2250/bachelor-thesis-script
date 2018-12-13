@@ -97,7 +97,26 @@ def process_file(file):
 		except Exception as e:
 			print(f'failed to load cached fft for {file}\n{e}')
 
-	voltage, sample_rate, length = lib.tekdecode.loadFile(file)
+	if file.startswith('step'):
+		args.no_cache = True  # runs in subprocess anyways, so other files are not affected
+		_, step_height, step_sample_rate, step_time_rise = file.split(':')
+		sample_rate = int(step_sample_rate)
+		if step_time_rise == '0':
+			length_half = int(args.resolution / 2)
+			voltage = np.concatenate(
+				(np.zeros(length_half), float(step_height) * np.ones(length_half)))
+		else:
+			time = np.arange(args.resolution) / sample_rate
+			time_half = args.resolution / (2 * sample_rate)
+			voltage = float(step_height) / \
+	                    (1 + np.exp((time - time_half) / float(step_time_rise)))
+	elif file.startswith('slope'):
+		args.no_cache = True
+		_, slope_height, slope_sample_rate = file.split(':')
+		sample_rate = int(slope_sample_rate)
+		voltage = np.linspace(0, float(slope_height), args.resolution)
+	else:
+		voltage, sample_rate, length = lib.tekdecode.loadFile(file)
 
 	frequency, power = scipy.signal.welch(
 		voltage, sample_rate, nperseg=args.resolution)
