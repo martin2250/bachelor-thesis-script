@@ -18,6 +18,10 @@ parser_group_common.add_argument('--title',
                                  help='plot title')
 parser_group_common.add_argument('--size', metavar=['width', 'height'], type=float, nargs=2,
                                  help='plot size (mm)')
+parser_group_common.add_argument('--xrange', metavar=['x_min', 'x_max'], type=float, nargs=2,
+                                 help='plot range X')
+parser_group_common.add_argument('--yrange', metavar=['y_min', 'y_max'], type=float, nargs=2,
+                                 help='plot range Y')
 parser_group_common.add_argument('--reference', default='out',
                                  help='input or output referenced')
 parser_group_common.add_argument('--output',
@@ -37,6 +41,8 @@ parser_group_trace.add_argument('--label',
 
 parser_group_trace.add_argument('--gain-factor-const',
                                 help='constant amplification of buffer amplifier (evaluated as expression, noise will be divided by this factor)')
+parser_group_trace.add_argument('--gain-factor-simple', type=float, nargs=2, metavar=['cutoff_L', 'cutoff_H'],
+                                help='divide by first order bandpass with supplied cutoff frequencies')
 parser_group_trace.add_argument('--gain-factor-fit', action='append',
                                 help='supply one or more (frequency - gain) files to get input referenced plot, noise will be divided by this')
 parser_group_trace.add_argument('--gain-fit-function', choices=['hybrid', 'simple'], default='hybrid',
@@ -85,6 +91,13 @@ if True:
 
 
 def process_file(file):
+	if file.endswith('.fft.npz'):
+		data = np.load(file)
+		power = data['power']
+		sample_rate = data['sample_rate']
+		frequency = np.linspace(0, sample_rate / 2, power.size)
+		return power[1:], frequency[1:], sample_rate
+
 	file_cache = file + f'.{args.resolution}.fft.npz'
 
 	if not args.no_cache and os.path.isfile(file_cache):
@@ -167,6 +180,10 @@ def main():
 		if trace.gain_factor_const:
 			voltage /= eval(trace.gain_factor_const)
 
+		if trace.gain_factor_simple:
+			gain = lib.fitgain.bandpass(frequency, 1, *trace.gain_factor_simple)
+			voltage /= gain
+
 		for gain_file in trace.gain_factor_fit or []:
 			(frequency_fit, gain_fit) = np.loadtxt(
 				gain_file, unpack=True, usecols=(0, 1))
@@ -185,16 +202,20 @@ def main():
 
 	ax.set_xscale("log", nonposx='clip')
 	ax.set_yscale("log", nonposy='clip')
-	ax.grid(which='both')
+	ax.grid(which='both', alpha=0.4)
 	for subax in [ax.xaxis, ax.yaxis]:
 		subax.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%g'))
 	ax.set_ylabel(
-		r'$\sqrt{J_{ss}^{%s}(f)}$ ($\si{\micro\volt}$)' % args.reference)
+		r'$\sqrt{J_{ss}^{%s}(f)}$ ($\si{\micro\volt\hertz^{-1/2}}$)' % args.reference)
 	ax.set_xlabel('$f$ (Hz)')
 	if use_legend:
 		ax.legend()
 	if args.title:
 		ax.set_title(args.title)
+	if args.xrange:
+		plt.xlim(*args.xrange)
+	if args.yrange:
+		plt.ylim(*args.yrange)
 
 	############################################################################
 

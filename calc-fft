@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
+import argparse
+
+import argcomplete
+
+################################################################################
+
+parser = argparse.ArgumentParser(
+	description='pre-calculates welch transforms from one or multiple scope traces')
+
+parser.add_argument('--resolution', type=int,
+                    help='fft resolution', default=100000)
+parser.add_argument('--output', required=True, help='output file (*.fft.npz)')
+parser.add_argument('input', metavar='file', nargs='+',
+                    help='input file')
+
+argcomplete.autocomplete(parser)
+args = parser.parse_args()
+
+################################################################################
+# prevent autopep8 from moving this to the front (speeds up argcomplete and parser)
+if True:
+	import os
+	import sys
+	from multiprocessing import Pool
+
+	import numpy as np
+	import scipy.signal
+
+	import lib.tekdecode
+
+################################################################################
+# calculate noise density from a single file
+
+
+def process_file(file):
+	voltage, sample_rate, length = lib.tekdecode.loadFile(file)
+
+	frequency, power = scipy.signal.welch(
+		voltage, sample_rate, nperseg=args.resolution)
+
+	return power[1:], frequency[1:], sample_rate
+
+################################################################################
+
+
+def main():
+	# process all files
+	pool = Pool()
+	output = pool.map(process_file, args.input)
+	pool.close()
+	pool.join()
+
+	power, frequency, sample_rate = zip(*output)
+	frequency = frequency[0]
+	power = np.array(power)
+
+	############################################################################
+	# check that sample rates match
+	if sample_rate.count(sample_rate[0]) != len(sample_rate):
+		print('files have different saple rates!')
+		exit(1)
+
+	power_mean = np.mean(power, axis=0)
+
+	info = os.getcwd() + '\n' + ' '.join(sys.argv)
+
+	np.savez_compressed(args.output, power=power_mean,
+	                    sample_rate=sample_rate[0], info=info.encode())
+
+
+if __name__ == "__main__":
+	main()
