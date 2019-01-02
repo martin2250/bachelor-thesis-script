@@ -39,6 +39,9 @@ parser_group_trace.add_argument('files', nargs='+', metavar='file',
 parser_group_trace.add_argument('--label',
                                 help='trace label')
 
+parser_group_trace.add_argument('--calculate-resolution', type=float, metavar='pulse_height',
+                                help='calculate resolution from optimal filtering, pulse_height = voltage of incoming step pulse')
+
 parser_group_trace.add_argument('--gain-factor-const',
                                 help='constant amplification of buffer amplifier (evaluated as expression, noise will be divided by this factor)')
 parser_group_trace.add_argument('--gain-factor-simple', type=float, nargs=2, metavar=['cutoff_L', 'cutoff_H'],
@@ -170,8 +173,21 @@ def main():
 
 	############################################################################
 	# plot everything
-	ax = plt.gca()
+	fig, ax = plt.subplots(
+		constrained_layout=True, figsize=tuple((s / 25.4 for s in args.size)) if args.size else None)
+
 	use_legend = False
+
+	############################################################################
+
+	if args.calculate_resolution:
+		step_voltage = args.calculate_resolution
+		signal_wrt_frequency = step_voltage / 2 / np.pi / frequency
+
+		ax.plot(frequency, signal_wrt_frequency * 1e6, '--k',
+		        label=f'\\SI{{{step_voltage * 1e6}}}{{\\micro\\volt}} event', alpha=args.alpha)
+
+	############################################################################
 
 	for trace in traces:
 		power_mean = np.mean(power[trace.file_mapping], axis=0)
@@ -195,8 +211,16 @@ def main():
 			use_legend = True
 		else:
 			label = None
-		ax.plot(frequency, voltage * 1e6,
-                    label=label, alpha=args.alpha)
+		ax.plot(frequency, voltage * 1e6, label=label, alpha=args.alpha)
+
+		if args.calculate_resolution:
+			# see page 21 of ME
+			sum_3_33 = np.sum(signal_wrt_frequency**2 / (voltage**2 / 2))
+			sigma_voltage_squared = args.resolution / (sample_rate[0] * 2 * sum_3_33)
+			sigma_voltage = np.sqrt(sigma_voltage_squared) * step_voltage
+			if not args.output:
+				print(
+					f'resolution ({trace.label}): {sigma_voltage:0.2e} V (for {step_voltage:0.2e} V signal)')
 
 	############################################################################
 
@@ -220,10 +244,7 @@ def main():
 	############################################################################
 
 	if args.output:
-		if args.size:
-			fig = plt.gcf()
-			fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)
-		plt.savefig(args.output, bbox_inches="tight", pad_inches=0.02)
+		plt.savefig(args.output)
 	else:
 		plt.show()
 

@@ -35,8 +35,8 @@ def fit_hybrid(frequency, gain, print_fit=False, return_result=False):
 
 		return output
 
-	bandfit, _ = scipy.optimize.curve_fit(bandpass_hybrid, frequency, gain, (10, 20, 10000, 1, 1, 0, 0, 0, 0), bounds=([
-	                                      0, 5e-1, 5e3, 0.5, 0.5, -1, -1, -1, -1], [500, 5e3, 5e5, 5, 5, 1, 1, 1, 1]))
+	bandfit, _ = scipy.optimize.curve_fit(bandpass_hybrid, frequency, gain, (10, 10, 10000, 1, 1, 0, 0, 0, 0), bounds=([
+	                                      0, 5e-2, 5e3, 0.5, 0.5, -1, -1, -1, -1], [500, 5e3, 5e5, 5, 5, 1, 1, 1, 1]))
 
 	# drop 10% of values
 	error = (gain - bandpass_hybrid(frequency, *bandfit))**2
@@ -46,7 +46,7 @@ def fit_hybrid(frequency, gain, print_fit=False, return_result=False):
 	gain = gain[error_condition]
 
 	bandfit, _ = scipy.optimize.curve_fit(bandpass_hybrid, frequency, gain, bandfit, bounds=(
-		[0, 5e-1, 5e3, 0.5, 0.5, -1, -1, -1, -1], [500, 5e3, 5e5, 5, 5, 1, 1, 1, 1]))
+		[0, 5e-2, 5e3, 0.5, 0.5, -1, -1, -1, -1], [500, 5e3, 5e5, 5, 5, 1, 1, 1, 1]))
 
 	if print_fit:
 		labels = ['gain', 'cutoffL', 'cutoffH',

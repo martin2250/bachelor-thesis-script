@@ -21,7 +21,8 @@ parser_group_common.add_argument(
 	'--size', metavar=['width', 'height'], type=float, nargs=2, help='plot size (mm)')
 parser_group_common.add_argument('--output',
                                  help='plot output file')
-
+parser_group_common.add_argument('--yrange', metavar=['y_min', 'y_max'], type=float, nargs=2,
+                                 help='plot range Y')
 parser_group_common.add_argument('--frequency-range', type=float, nargs=2,
                                  help='min and max frequency for plot')
 parser_group_common.add_argument('--fit-gain-labels', action='store_true',
@@ -30,6 +31,8 @@ parser_group_common.add_argument('--fit-gain', action='store_true',
                                  help='try to fit a band pass curve to gain')
 parser_group_common.add_argument('--fit-output', action='store_true', default=False,
                                  help='print result of fit')
+parser_group_common.add_argument('--fit-gain-alpha', type=float, default=1,
+                                 help='fit trace opacity (0-1)')
 
 parser_group_trace = parser.add_argument_group('trace')
 
@@ -79,15 +82,17 @@ if True:
 
 ################################################################################
 
-lines = []
+fig, axis_gain = plt.subplots(
+	constrained_layout=True, figsize=tuple((s / 25.4 for s in args.size)) if args.size else None)
 
-axis_gain = plt.gca()
 axis_gain.grid(which='both')
 axis_gain.set_xscale("log", nonposx='clip')
 axis_gain.set_xlabel('Frequenz (Hz)')
 
 if args.frequency_range:
 	axis_gain.set_xlim(*args.frequency_range)
+
+################################################################################
 
 if args.gain == 'dB':
 	axis_gain.set_ylabel('Verstärkung (dB)')
@@ -113,6 +118,8 @@ if args.phase:
 
 		def func_phase_to_plot(phase): return phase * 180 / np.pi
 
+# store lines here to add both axes to the legend
+lines = []
 use_legend = False
 
 for trace in traces:
@@ -137,11 +144,13 @@ for trace in traces:
 		label = None
 
 	############################################################################
-	fit_label = ''
+
 	if args.fit_gain:
 		gain_fitfunc, gain_fitresult = lib.fitgain.fit_lookup[trace.gain_fit_function](
 			frequency, gain, args.fit_output, return_result=True)
-		fit_label = f'A: {gain_fitresult.gain:0.1f}'
+
+		if label and args.fit_gain_labels:
+			label += f', A: {gain_fitresult.gain:0.1f}'
 
 		if args.frequency_range:
 			f_log_min = np.log10(args.frequency_range[0])
@@ -161,7 +170,7 @@ for trace in traces:
 
 	if args.fit_gain:
 		axis_gain.plot(frequency_fit, func_gain_to_plot(gain_fit),
-                 '-', color='red', lw=1)
+                 '-', color='red', lw=1, alpha=args.fit_gain_alpha)
 
 	################################################################################
 
@@ -183,13 +192,12 @@ axis_gain.yaxis.set_minor_formatter(
 
 if args.title:
 	plt.title(args.title)
+if args.yrange:
+	axis_gain.set_ylim(*args.yrange)
 
 ################################################################################
 
 if args.output:
-	if args.size:
-		fig = matplotlib.pyplot.gcf()
-		fig.set_size_inches(args.size[0] / 25.4, args.size[1] / 25.4)
-	plt.savefig(args.output, bbox_inches="tight", pad_inches=0.02)
+	plt.savefig(args.output)
 else:
 	plt.show()
