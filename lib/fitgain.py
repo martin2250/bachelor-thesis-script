@@ -92,7 +92,7 @@ def fit_simple(frequency, gain, print_fit=False, return_result=False):
 		return bandpass(frequency, *bandfit)
 
 	if return_result:
-		return gain_function, FitResult(bandfit[:5])
+		return gain_function, FitResult(*(bandfit[:5]))
 	else:
 		return gain_function
 
