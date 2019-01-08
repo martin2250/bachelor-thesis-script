@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('noise_file', help='noise track to pull random data from')
 
-parser.add_argument('--length', type=float, default=1,
+parser.add_argument('--length', type=float, default=0.01,
                     help='length of a single track (seconds)')
 parser.add_argument('--pulse', type=float, default=1e-3,
                     help='pulse height (volt)')
@@ -25,6 +25,7 @@ args = parser.parse_args()
 # prevent autopep8 from moving this to the front (speeds up argcomplete and parser)
 if True:
 	import numpy as np
+	#import numpy.fft
 	import matplotlib.pyplot as plt
 	import matplotlib.ticker
 	import lib.tekdecode
@@ -33,21 +34,29 @@ if True:
 input_voltage, sample_rate, input_length = lib.tekdecode.loadFile(
 	args.noise_file)
 
-length = int(args.length * sample_rate)
+length = int(args.length * sample_rate / 2) * 2  # make length divisible by two
+length_half = int(length / 2)
+time = np.linspace(0, args.length, length)
 
 
 def get_random_noise():
 	index_start = random.randrange(0, input_length - length)
-	return input_voltage[index_start:index_start + length]
+	noise = input_voltage[index_start:index_start + length]
+
+	# make <noise> = 0
+	return noise - np.mean(noise)
+
+
+def get_pulse():
+	pulse = np.zeros(length)
+	pulse[length_half:] = np.exp(-time[:length_half] / args.time_const)
+	return pulse * args.pulse
 
 
 for i in range(2):
-	Y = get_random_noise()
+	noise = get_random_noise()
+	pulse = get_pulse()
 
-	index_half = int(length / 2)
-
-	Y[index_half:] = Y[index_half:] + args.pulse * \
-		np.exp(-np.linspace(0, 5, length - index_half))
-
-	plt.plot(Y)
+	plt.plot(noise)
+	plt.plot(pulse)
 	plt.show()
