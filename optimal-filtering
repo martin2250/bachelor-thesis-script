@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
+import argparse
+
+import argcomplete
+
+parser = argparse.ArgumentParser(
+	description='uses a noise track to generate sample pulse waveforms')
+
+parser.add_argument('noise_file', help='noise track to pull random data from')
+
+parser.add_argument('--length', type=float, default=1,
+                    help='length of a single track (seconds)')
+parser.add_argument('--pulse', type=float, default=1e-3,
+                    help='pulse height (volt)')
+parser.add_argument('--time-const', type=float, default=1e-3,
+                    help='time constant of pulse decay (seconds)')
+
+parser.add_argument('--seed', type=float, help='RNG seed, not implemented')
+
+argcomplete.autocomplete(parser)
+args = parser.parse_args()
+
+################################################################################
+# prevent autopep8 from moving this to the front (speeds up argcomplete and parser)
+if True:
+	import numpy as np
+	import matplotlib.pyplot as plt
+	import matplotlib.ticker
+	import lib.tekdecode
+	import random
+
+input_voltage, sample_rate, input_length = lib.tekdecode.loadFile(
+	args.noise_file)
+
+length = int(args.length * sample_rate)
+
+
+def get_random_noise():
+	index_start = random.randrange(0, input_length - length)
+	return input_voltage[index_start:index_start + length]
+
+
+for i in range(2):
+	Y = get_random_noise()
+
+	index_half = int(length / 2)
+
+	Y[index_half:] = Y[index_half:] + args.pulse * \
+		np.exp(-np.linspace(0, 5, length - index_half))
+
+	plt.plot(Y)
+	plt.show()
