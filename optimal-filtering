@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # PYTHON_ARGCOMPLETE_OK
 import argparse
+import code
 
 import argcomplete
 
@@ -9,9 +10,14 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('noise_file', help='noise track to pull random data from')
 
+parser.add_argument('--gain-fit',
+                    help='sweep file to correct gain')
+parser.add_argument('--gain-const', type=float,
+                    help='additional gain (noise is divided by)')
+
 parser.add_argument('--length', type=float, default=0.01,
                     help='length of a single track (seconds)')
-parser.add_argument('--pulse', type=float, default=1e-3,
+parser.add_argument('--pulse', type=float, default=7e-6,
                     help='pulse height (volt)')
 parser.add_argument('--time-const', type=float, default=1e-3,
                     help='time constant of pulse decay (seconds)')
@@ -29,14 +35,48 @@ if True:
 	import matplotlib.pyplot as plt
 	import matplotlib.ticker
 	import lib.tekdecode
+	import lib.fitgain
+	import scipy.signal
 	import random
 
 input_voltage, sample_rate, input_length = lib.tekdecode.loadFile(
 	args.noise_file)
 
+
+def process_voltage():
+	global input_voltage
+	input_voltage = input_voltage - np.mean(input_voltage)
+
+	if args.gain_fit:
+		(frequency_fit, gain_fit) = np.loadtxt(
+			args.gain_fit, unpack=True, usecols=(0, 1))
+		gain_fitfunc = lib.fitgain.fit_hybrid(
+			frequency_fit, gain_fit)
+		freq = np.fft.rfftfreq(len(input_voltage), 1 / sample_rate)
+		freq[0] = 1
+		factor = gain_fitfunc(freq)
+		factor[0] = np.inf
+
+		input_voltage_fft = np.fft.rfft(input_voltage)
+		input_voltage_fft /= factor
+		input_voltage = np.real(np.fft.irfft(input_voltage_fft))
+
+	if args.gain_const:
+		input_voltage /= args.gain_const
+
+
+process_voltage()
+
 length = int(args.length * sample_rate / 2) * 2  # make length divisible by two
 length_half = int(length / 2)
 time = np.linspace(0, args.length, length)
+
+
+frequency_noise, power_noise = scipy.signal.welch(
+	input_voltage, sample_rate, nperseg=length)
+
+frequency_noise_two, power_noise_two = scipy.signal.welch(
+	input_voltage, sample_rate, nperseg=length, return_onesided=False)
 
 
 def get_random_noise():
@@ -47,16 +87,60 @@ def get_random_noise():
 	return noise - np.mean(noise)
 
 
-def get_pulse():
+def get_pulse(height=1):
 	pulse = np.zeros(length)
 	pulse[length_half:] = np.exp(-time[:length_half] / args.time_const)
-	return pulse * args.pulse
+	return pulse * height
 
 
-for i in range(2):
+def apply_fft_factor(signal, factor):
+	signal_fft = np.fft.fft(signal)
+	signal_fft *= factor
+	return np.fft.fft(signal_fft)
+
+
+A = []
+B = []
+
+for i in range(10000):
 	noise = get_random_noise()
 	pulse = get_pulse()
 
-	plt.plot(noise)
-	plt.plot(pulse)
-	plt.show()
+	signal = noise + pulse * args.pulse
+
+	signal_fft = np.fft.fft(signal)
+	pulse_fft = np.fft.fft(pulse)
+	freq_ft = np.fft.fftfreq(length, 1 / sample_rate)
+
+	s_n = pulse_fft
+	v_n = signal_fft
+	J_f_n = power_noise_two
+
+	# optimal_filter = np.conj(s_n) / J_f_n
+	# optimal_filter = optimal_filter / np.mean(np.abs(optimal_filter))
+	#
+	# plt.plot(signal)
+	#
+	# signal = np.real(apply_fft_factor(signal, optimal_filter))
+	# pulse = np.real(apply_fft_factor(pulse, optimal_filter))
+	#
+	# plt.plot(signal)
+	# plt.plot(pulse)
+	# plt.show()
+
+	top = np.exp(1j * 2 * np.pi * freq_ft * args.length / 2) * \
+            np.conj(s_n) * v_n / J_f_n
+	bottom = np.abs(s_n**2) / J_f_n
+
+	a = np.sum(top) / np.sum(bottom) * 1e6
+	A.append(np.real(a))
+	B.append(np.imag(a))
+
+	if (i % 100) == 0:
+		print(i)
+
+
+#plt.hist(A, 50, density=True)
+plt.hist(B, 50, density=True)
+plt.show()
+#code.interact(banner=None, readfunc=None, local=locals(), exitmsg=None)

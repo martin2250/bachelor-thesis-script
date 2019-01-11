@@ -30,6 +30,8 @@ parser_group_common.add_argument('--no-cache', action='store_true',
                                  help='disable fft caching')
 parser_group_common.add_argument('--alpha', type=float, default=1,
                                  help='trace opacity (0-1)')
+parser_group_common.add_argument('--linewidth', type=float,
+                                 help='line width')
 
 parser_group_trace = parser.add_argument_group('trace')
 
@@ -211,7 +213,8 @@ def main():
 			use_legend = True
 		else:
 			label = None
-		ax.plot(frequency, voltage * 1e6, label=label, alpha=args.alpha)
+		ax.plot(frequency, voltage * 1e6, label=label,
+		        alpha=args.alpha, lw=args.linewidth)
 
 		if args.calculate_resolution:
 			# see page 21 of ME
