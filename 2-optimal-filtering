@@ -1,0 +1,134 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
+import argparse
+import code
+
+import argcomplete
+
+parser = argparse.ArgumentParser(
+	description='uses a noise track to generate sample pulse waveforms')
+
+parser.add_argument('noise_file', help='noise track to pull random data from')
+
+parser.add_argument('--gain-fit',
+                    help='sweep file to correct gain')
+parser.add_argument('--gain-const', type=float,
+                    help='additional gain (noise is divided by)')
+
+parser.add_argument('--length', type=float, default=0.01,
+                    help='length of a single track (seconds)')
+parser.add_argument('--pulse', type=float, default=7e-6,
+                    help='pulse height (volt)')
+parser.add_argument('--time-const', type=float, default=1e-3,
+                    help='time constant of pulse decay (seconds)')
+
+parser.add_argument('--seed', type=float, help='RNG seed, not implemented')
+
+argcomplete.autocomplete(parser)
+args = parser.parse_args()
+
+################################################################################
+# prevent autopep8 from moving this to the front (speeds up argcomplete and parser)
+if True:
+	import numpy as np
+	#import numpy.fft
+	import matplotlib.pyplot as plt
+	import matplotlib.ticker
+	import lib.tekdecode
+	import lib.fitgain
+	import scipy.signal
+	import random
+
+
+voltage_buffer_out, sample_rate, input_length = lib.tekdecode.loadFile(
+	args.noise_file)
+
+length = int(args.length * sample_rate / 2) * 2  # make length divisible by two
+length_half = int(length / 2)
+time = np.linspace(0, args.length, length)
+print(f'length: {length} samples')
+
+# factor out buffer amp
+# calculate noise at hemt output
+voltage_output = voltage_buffer_out / 20
+
+
+def get_random_noise():
+	index_start = random.randrange(0, input_length - length)
+	noise = voltage_output[index_start:index_start + length]
+	return noise - np.mean(noise)
+
+
+# create pulse
+pulse_unit_input = np.zeros(length)
+pulse_unit_input[length_half:] = np.exp(-time[:length_half] / args.time_const)
+
+# calculate pulse shape at hemt output
+hemt_A = 35
+hemt_hp_fcl = 5.9
+hemt_hp_order = 1
+hemt_sos = scipy.signal.butter(hemt_hp_order, hemt_hp_fcl,
+                               'hp', fs=sample_rate, output='sos')
+pulse_unit_output = hemt_A * scipy.signal.sosfilt(hemt_sos, pulse_unit_input)
+
+if False:
+	plt.plot(pulse_unit_input, label='input (unit pulse)')
+	plt.plot(pulse_unit_output / hemt_A,
+	         label='output (unit pulse without voltage amplification)')
+	plt.legend()
+	plt.show()
+
+frequency_noise, power_noise = scipy.signal.welch(
+	voltage_output, sample_rate, nperseg=length)
+
+frequency_noise_two, power_noise_two = scipy.signal.welch(
+	voltage_output, sample_rate, nperseg=length, return_onesided=False)
+
+
+A = []
+Sigma = []
+
+for i in range(10000):
+	noise = get_random_noise()
+	signal = noise + args.pulse * pulse_unit_output
+
+	signal_fft = np.fft.fft(signal) / length
+	pulse_fft = np.fft.fft(pulse_unit_output) / length
+	freq_ft = np.fft.fftfreq(length, 1 / sample_rate)
+
+	s_n = pulse_fft
+	v_n = signal_fft
+	J_f_n = power_noise_two
+
+	# optimal_filter = np.conj(s_n) / J_f_n
+	# optimal_filter = optimal_filter / np.mean(np.abs(optimal_filter))
+	#
+	# plt.plot(signal)
+	#
+	# signal = np.real(apply_fft_factor(signal, optimal_filter))
+	# pulse = np.real(apply_fft_factor(pulse, optimal_filter))
+	#
+	# plt.plot(signal)
+	# plt.plot(pulse)
+	# plt.show()
+
+	# calculate estimated A
+	top = np.conj(s_n) * v_n / J_f_n
+	bottom = np.abs(s_n)**2 / J_f_n
+
+	a = np.sum(top) / np.sum(bottom) * 1e6
+	A.append(np.real(a))
+
+	# calculate sigma
+	sigma_inv_sq = args.length * np.sum(bottom)
+	sigma = 1 / np.sqrt(np.sum(sigma_inv_sq))
+	Sigma.append(1e6 * sigma)
+
+	if (i % 100) == 0:
+		print(i, end='\r')
+
+
+plt.hist(A, 100, density=True)
+print(f'{np.mean(A)} +- {np.mean(Sigma)} uV pulse height')
+plt.show()
+#code.interact(banner=None, readfunc=None, local=locals(), exitmsg=None)
