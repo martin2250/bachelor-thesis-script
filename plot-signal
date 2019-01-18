@@ -14,8 +14,17 @@ parser.add_argument('file',
                     help='csv/isf files from Tektronix scope', nargs='+')
 parser.add_argument('--downsample', type=int, default=100,
                     help='number of samples to skip')
+parser.add_argument('--size', metavar=['width', 'height'], type=float, nargs=2,
+                    help='plot size (mm)')
+parser.add_argument('--factor',
+                    help='constant factor (evaled and multiplied)')
+parser.add_argument('--output',
+                    help='output file name')
 
 args = parser.parse_args()
+
+fig, ax = plt.subplots(
+    constrained_layout=True, figsize=tuple((s / 25.4 for s in args.size)) if args.size else None)
 
 for file in args.file:
 
@@ -23,14 +32,20 @@ for file in args.file:
 
 	voltage = voltage[::args.downsample]
 
-	time = np.arange(0, len(voltage)) * (args.downsample * 1e6 / sample_rate)
+	time = np.arange(0, len(voltage)) * (args.downsample / sample_rate)
 
 	voltage *= 1e3
 
-	plt.plot(time, voltage, label=file)
+	if args.factor:
+		voltage *= eval(args.factor)
 
-plt.ylabel('voltage (mV)')
-plt.xlabel('time (µs)')
-plt.legend()
-plt.grid(which='both')
-plt.show()
+	ax.plot(time, voltage)
+
+ax.set_ylabel('Spannung (mV)')
+ax.set_xlabel('Zeit (s)')
+ax.grid(which='both')
+
+if args.output:
+	plt.savefig(args.output)
+else:
+	plt.show()
