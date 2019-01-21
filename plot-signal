@@ -39,7 +39,7 @@ for file in args.file:
 	if args.factor:
 		voltage *= eval(args.factor)
 
-	ax.plot(time, voltage)
+	ax.plot(time, voltage, lw=0.1)
 
 ax.set_ylabel('Spannung (mV)')
 ax.set_xlabel('Zeit (s)')

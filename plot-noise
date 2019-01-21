@@ -32,6 +32,8 @@ parser_group_common.add_argument('--alpha', type=float, default=1,
                                  help='trace opacity (0-1)')
 parser_group_common.add_argument('--linewidth', type=float,
                                  help='line width')
+parser_group_common.add_argument('--use-constrained-layout', dest='use_constrained_layout', action='store_true', default=False,
+                                 help='legacy for compare-max plot')
 
 parser_group_trace = parser.add_argument_group('trace')
 
@@ -175,8 +177,16 @@ def main():
 
 	############################################################################
 	# plot everything
-	fig, ax = plt.subplots(
-		constrained_layout=True, figsize=tuple((s / 25.4 for s in args.size)) if args.size else None)
+
+	fig, ax = plt.subplots(constrained_layout=args.use_constrained_layout, figsize=tuple(
+		(s / 25.4 for s in args.size)) if args.size else None)
+
+	if args.size and not args.use_constrained_layout:
+		plt.subplots_adjust(
+			left=(15 / args.size[0]),
+			right=1 - (15 / args.size[0]),
+			top=1 - (2 / args.size[1]),
+			bottom=(10 / args.size[1]))
 
 	use_legend = False
 
@@ -233,7 +243,7 @@ def main():
 	for subax in [ax.xaxis, ax.yaxis]:
 		subax.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%g'))
 	ax.set_ylabel(
-		r'$\sqrt{J_{ss}^{%s}(f)}$ ($\si{\micro\volt\hertz^{-1/2}}$)' % args.reference)
+		r'$\sqrt{J_{ss}^{%s}(f)}$ ($\si{\micro\volt/\sqrt{\hertz}}$)' % args.reference)
 	ax.set_xlabel('$f$ (Hz)')
 	if use_legend:
 		ax.legend()

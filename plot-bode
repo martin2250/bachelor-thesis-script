@@ -17,8 +17,12 @@ parser_group_common.add_argument('--phase', choices=['rad', 'deg'],
                                  help='how to plot phase')
 parser_group_common.add_argument('--title',
                                  help='plot title')
-parser_group_common.add_argument(
-	'--size', metavar=['width', 'height'], type=float, nargs=2, help='plot size (mm)')
+parser_group_common.add_argument('--y-format',
+                                 help='y axis format string')
+parser_group_common.add_argument('--size', metavar=['width', 'height'], type=float, nargs=2,
+                                 help='plot size (mm)')
+parser_group_common.add_argument('--use-constrained-layout', dest='use_constrained_layout', action='store_true', default=False,
+                                 help='legacy for compare-max plot')
 parser_group_common.add_argument('--output',
                                  help='plot output file')
 parser_group_common.add_argument('--yrange', metavar=['y_min', 'y_max'], type=float, nargs=2,
@@ -82,12 +86,20 @@ if True:
 
 ################################################################################
 
-fig, axis_gain = plt.subplots(
-	constrained_layout=True, figsize=tuple((s / 25.4 for s in args.size)) if args.size else None)
+fig, axis_gain = plt.subplots(constrained_layout=args.use_constrained_layout, figsize=tuple(
+	(s / 25.4 for s in args.size)) if args.size else None)
 
-axis_gain.grid(which='both')
+if args.size and not args.use_constrained_layout:
+	plt.subplots_adjust(
+		left=(15 / args.size[0]),
+		right=1 - (15 / args.size[0]),
+		top=1 - (2 / args.size[1]),
+		bottom=(10 / args.size[1]))
+
+axis_gain.grid(which='both', alpha=0.4)
 axis_gain.set_xscale("log", nonposx='clip')
-axis_gain.set_xlabel('Frequenz (Hz)')
+axis_gain.set_xlabel('$f$ (Hz)')
+
 
 if args.frequency_range:
 	axis_gain.set_xlim(*args.frequency_range)
@@ -184,10 +196,16 @@ if use_legend:
 	labels = [l.get_label() for l in lines]
 	axis_gain.legend(lines, labels, loc=0)
 
+# axis_gain.yaxis.set_major_formatter(
+# 	matplotlib.ticker.FormatStrFormatter('%0.0f'))
+# axis_gain.yaxis.set_minor_formatter(
+# 	matplotlib.ticker.FormatStrFormatter('%0.0f'))
+
+axis_gain.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%g'))
 axis_gain.yaxis.set_major_formatter(
-	matplotlib.ticker.FormatStrFormatter('%0.1f'))
+	matplotlib.ticker.FormatStrFormatter(args.y_format or '%g'))
 axis_gain.yaxis.set_minor_formatter(
-	matplotlib.ticker.FormatStrFormatter('%0.1f'))
+	matplotlib.ticker.FormatStrFormatter(args.y_format or '%g'))
 
 
 if args.title:
