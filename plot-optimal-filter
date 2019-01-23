@@ -22,10 +22,15 @@ parser.add_argument('--length', type=float, default=0.01,
                     help='length of a single track (seconds)')
 parser.add_argument('--pulse', type=float, default=7e-6,
                     help='pulse height (volt)')
-parser.add_argument('--time-const', type=float, default=1e-3,
-                    help='time constant of pulse decay (seconds)')
+parser.add_argument('--time-const', type=float, default=100,
+                    help='time constant of input side pulse decay (seconds)')
 
-parser.add_argument('--seed', type=float, help='RNG seed, not implemented')
+parser.add_argument('--amp-fcl', type=float, default=5.9,
+                    help='amplifier high pass cutoff frequency')
+parser.add_argument('--amp-A', type=float, default=35,
+                    help='amplifier amplification factor')
+
+parser.add_argument('--seed', type=int, help='RNG seed, not implemented')
 
 parser.add_argument('--rows', type=int, default=3,
                     help='number of rows to plot')
@@ -49,13 +54,15 @@ if True:
 	import scipy.signal
 	import random
 
+if args.seed:
+	random.seed(args.seed)
 
 voltage_buffer_out, sample_rate, input_length = lib.tekdecode.loadFile(
 	args.noise_file)
 
 # length = number of samples
 length = int(args.length * sample_rate / 2) * 2  # make length divisible by two
-length_half = int(length / 2)
+pulse_start = int(length * 0.2)
 time = np.linspace(0, args.length, length)
 
 # factor out buffer amp
@@ -71,20 +78,39 @@ def get_random_noise():
 
 # create perfect pulse as seen on the hemt input
 pulse_unit_input = np.zeros(length)
-pulse_unit_input[length_half:] = np.exp(-time[:length_half] / args.time_const)
+pulse_unit_input[pulse_start:] = np.exp(
+	-time[:-pulse_start] / args.time_const)
 
 # calculate pulse shape at hemt output (with gain and high pass)
-hemt_A = 35
-hemt_hp_fcl = 5.9
+
+
+def butter_highpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = scipy.signal.butter(
+    	order, normal_cutoff, btype='high', analog=False)
+    return b, a
+
+
+def butter_highpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_highpass(cutoff, fs, order=order)
+    y = scipy.signal.lfilter(b, a, data)
+    return y
+
+
 hemt_hp_order = 1
-hemt_sos = scipy.signal.butter(hemt_hp_order, hemt_hp_fcl,
-                               'hp', fs=sample_rate, output='sos')
-pulse_unit_output = hemt_A * scipy.signal.sosfilt(hemt_sos, pulse_unit_input)
+# hemt_sos = scipy.signal.butter(hemt_hp_order, args.amp_fcl,
+#                                'hp', fs=sample_rate, output='sos')
+# pulse_unit_output = args.amp_A * \
+# 	scipy.signal.sosfilt(hemt_sos, pulse_unit_input)
+pulse_unit_output = args.amp_A * \
+	butter_highpass_filter(pulse_unit_input, args.amp_fcl, sample_rate, 1)
+pulse = args.pulse * pulse_unit_output
 
 # plot the high-passed pulse
 if False:
 	plt.plot(pulse_unit_input, label='input (unit pulse)')
-	plt.plot(pulse_unit_output / hemt_A,
+	plt.plot(pulse_unit_output / args.amp_A,
 	         label='output (unit pulse without voltage amplification)')
 	plt.legend()
 	plt.show()
@@ -97,8 +123,23 @@ frequency_noise, power_noise = scipy.signal.welch(
 frequency_noise_two, power_noise_two = scipy.signal.welch(
 	voltage_output, sample_rate, nperseg=length, return_onesided=False)
 
-pulse_fft = np.fft.fft(pulse_unit_output) / length
+pulse_fft = np.fft.fft(
+	pulse_unit_output) / length
 freq_ft = np.fft.fftfreq(length, 1 / sample_rate)
+
+# define variables as in the equation
+s_n = pulse_fft
+J_f_n = power_noise_two
+
+# get optimal filter
+optimal_filter_fft = np.conj(s_n) / J_f_n
+optimal_filter_fft = 2 * optimal_filter_fft / \
+	np.max(np.abs(optimal_filter_fft))
+optimal_filter = np.fft.ifft(optimal_filter_fft)
+pulse_filt = scipy.signal.convolve(pulse, optimal_filter).real
+# [pulse_start:length + pulse_start][::-1]
+# [length - pulse_start:1 - pulse_start]
+pulse_filt = pulse_filt[pulse_start:length + pulse_start][::-1]
 
 
 def apply_fft_factor(signal, factor):
@@ -123,29 +164,15 @@ if args.plot == 'stat':
 	A = []
 	Sigma = []
 
-	for i in range(10000):
+	for i in range(1000):
 		noise = get_random_noise()
-		signal = noise + args.pulse * pulse_unit_output
+		while np.max(np.abs(noise - np.mean(noise))) > 5 * np.std(noise):
+			noise = get_random_noise()
+
+		signal = noise + pulse
 
 		signal_fft = np.fft.fft(signal) / length
-		pulse_fft = np.fft.fft(pulse_unit_output) / length
-		freq_ft = np.fft.fftfreq(length, 1 / sample_rate)
-
-		s_n = pulse_fft
 		v_n = signal_fft
-		J_f_n = power_noise_two
-
-		# optimal_filter = np.conj(s_n) / J_f_n
-		# optimal_filter = optimal_filter / np.mean(np.abs(optimal_filter))
-		#
-		# plt.plot(signal)
-		#
-		# signal = np.real(apply_fft_factor(signal, optimal_filter))
-		# pulse = np.real(apply_fft_factor(pulse, optimal_filter))
-		#
-		# plt.plot(signal)
-		# plt.plot(pulse)
-		# plt.show()
 
 		# calculate estimated A
 		top = np.conj(s_n) * v_n / J_f_n
@@ -163,8 +190,9 @@ if args.plot == 'stat':
 			print(i, end='\r')
 
 	plt.hist(A, 100, density=True)
-	print(f'{np.mean(A)} +- {np.mean(Sigma)} uV pulse height')
-	plt.show()
+
+	if not args.output:
+		print(f'{np.mean(A)} +- {np.mean(Sigma)} (or {np.std(A)}) uV pulse height')
 
 elif args.plot == 'tracks':
 	fig, axes = plt.subplots(
@@ -188,45 +216,39 @@ elif args.plot == 'tracks':
 			ax.set_ylim(*args.yrange)
 		ax.grid(which='both', alpha=0.4)
 
-		noise = get_random_noise()
-		pulse = args.pulse * pulse_unit_output
-		signal = noise + pulse
-
-		s_n = pulse_fft
-		J_f_n = power_noise_two
-
-		optimal_filter_fft = np.conj(s_n) / J_f_n
-		optimal_filter_fft = 2 * optimal_filter_fft / \
-			np.max(np.abs(optimal_filter_fft))
-		optimal_filter = np.fft.ifft(optimal_filter_fft)
-
-		signal_filt = np.convolve(signal, optimal_filter, mode='same').real
-		pulse_filt = np.convolve(pulse, optimal_filter, mode='same').real
-
 		if index == (int(args.rows / 2), 0):
 			ax.set_ylabel('$U_\\mathrm{aus}$ (mV)')
 		if index == (args.rows - 1, 1):
 			ax.set_xlabel('$t$ (ms)')
 
 		if index[0] == 0:
-			pulse_max = np.max(pulse)
-			ax.set_ylim(-pulse_max * 1.3e3, pulse_max * 1.5e3)
+			pulse_max = np.max(pulse_filt)
+			ax.set_ylim(-pulse_max * 1.1e3, pulse_max * 1.1e3)
 			titlefs = 10
 			if index[1] == 0:
-				ax.plot(time * 1e3, pulse * 1e3, 'r')
+				ax.plot(time * 1e3, pulse * 1e3, 'C0')
 				ax.set_title('Puls ungefiltert', fontsize=titlefs)
 				continue
 			if index[1] == 1:
-				ax.plot(time * 1e3, pulse_filt * 1e3, 'r')
+				ax.plot(time * 1e3, pulse_filt * 1e3, 'C1')
 				ax.set_title('Puls gefiltert', fontsize=titlefs)
 				continue
 			if index[1] == 2:
-				ax.plot(time * 1e3,  3 * optimal_filter.real, 'r')
+				of_factor = pulse_max / np.max(np.abs(optimal_filter.real))
+				ax.plot(time * 1e3, 1e3 * of_factor * optimal_filter[::-1].real, 'r')
 				ax.set_title('optimaler Filter', fontsize=titlefs)
 				ax.set_ylabel('(A.U.)')
 				continue
 
+		noise = get_random_noise()
+		while np.max(np.abs(noise - np.mean(noise))) > 5 * np.std(noise):
+			noise = get_random_noise()
+		signal = noise + pulse
+
 		ax.plot(time * 1e3, signal * 1e3, lw=0.5)
+
+		signal_filt = scipy.signal.convolve(signal, optimal_filter).real
+		signal_filt = signal_filt[length - pulse_start:1 - pulse_start]
 		ax.plot(time * 1e3, signal_filt * 1e3, lw=1)
 
 if args.output:
