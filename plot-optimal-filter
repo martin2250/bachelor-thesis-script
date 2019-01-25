@@ -152,13 +152,16 @@ if __name__ == '__main__':
 
 	# get optimal filter
 	optimal_filter_fft = np.conj(s_n) / J_f_n
-	optimal_filter_fft = 2 * optimal_filter_fft / \
-		np.max(np.abs(optimal_filter_fft))
 	optimal_filter = np.fft.ifft(optimal_filter_fft)
 	pulse_filt = scipy.signal.convolve(pulse, optimal_filter).real
 	# [pulse_start:length + pulse_start][::-1]
 	# [length - pulse_start:1 - pulse_start]
 	pulse_filt = pulse_filt[pulse_start:length + pulse_start][::-1]
+
+	# scale optimal filter
+	s_factor = np.max(pulse) / np.max(pulse_filt)
+	pulse_filt *= s_factor
+	optimal_filter *= s_factor
 
 	def apply_fft_factor(signal, factor):
 		signal_fft = np.fft.fft(signal)
