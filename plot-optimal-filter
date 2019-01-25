@@ -38,7 +38,7 @@ if __name__ == '__main__':
 
 	parser.add_argument('--length', type=float, default=0.01,
 	                    help='length of a single track (seconds)')
-	parser.add_argument('--pulse', type=float, default=7e-6,
+	parser.add_argument('--pulse', type=float, default=9e-6,
 	                    help='pulse height (volt)')
 	parser.add_argument('--time-const', type=float, default=100,
 	                    help='time constant of input side pulse decay (seconds)')
@@ -169,18 +169,18 @@ if __name__ == '__main__':
 	bottom = np.abs(s_n)**2 / J_f_n
 	sum_bottom = np.sum(bottom)
 
-	def calcA(index_start):
-		noise = get_random_noise(index_start)
-		# while np.max(np.abs(noise - np.mean(noise))) > 5 * np.std(noise):
-		# 	noise = get_random_noise()
-		signal = noise + pulse
-		signal_fft = np.fft.fft(signal) / length
-		v_n = signal_fft
-		# calculate estimated A
-		top = np.conj(s_n) * v_n / J_f_n
-
-		a = np.sum(top) / sum_bottom * 1e6
-		return a
+	# def calcA(index_start):
+	# 	noise = get_random_noise(index_start)
+	# 	# while np.max(np.abs(noise - np.mean(noise))) > 5 * np.std(noise):
+	# 	# 	noise = get_random_noise()
+	# 	signal = noise + pulse
+	# 	signal_fft = np.fft.fft(signal) / length
+	# 	v_n = signal_fft
+	# 	# calculate estimated A
+	# 	top = np.conj(s_n) * v_n / J_f_n
+	#
+	# 	a = np.sum(top) / sum_bottom * 1e6
+	# 	return a
 
 	if args.plot == 'res':
 		sigma_inv_sq = args.length * sum_bottom
@@ -196,7 +196,7 @@ if __name__ == '__main__':
 		# collect statistics
 		centerindeces = [get_random_noise_start() for i in range(1000)]
 		from multiprocessing import Pool
-		pool = Pool()
+		pool = Pool(processes=4)
 		A = pool.map(calcA, centerindeces)
 		pool.close()
 		pool.join()
