@@ -14,7 +14,13 @@ def calcA(index_start):
 	signal_fft = np.fft.fft(signal) / length
 	v_n = signal_fft
 	# calculate estimated A
-	top = np.conj(s_n) * v_n / J_f_n
+
+	if not args.jitter:
+		top = np.conj(s_n) * v_n / J_f_n
+	else:
+		t_offs = np.random.normal(scale=args.jitter)
+		top = np.exp(1j * 2 * np.pi * freq_ft * t_offs) * \
+                    np.conj(s_n) * v_n / J_f_n
 
 	a = np.sum(top) / sum_bottom * 1e6
 	return a.real
@@ -42,6 +48,8 @@ if __name__ == '__main__':
 	                    help='pulse height (volt)')
 	parser.add_argument('--time-const', type=float, default=100,
 	                    help='time constant of input side pulse decay (seconds)')
+	parser.add_argument('--jitter', type=float, default=0,
+	                    help='jitter for pulse time (seconds)')
 
 	parser.add_argument('--amp-fcl', type=float, default=5.9,
 	                    help='amplifier high pass cutoff frequency')
@@ -199,7 +207,7 @@ if __name__ == '__main__':
 		# collect statistics
 		centerindeces = [get_random_noise_start() for i in range(1000)]
 		from multiprocessing import Pool
-		pool = Pool(processes=4)
+		pool = Pool(processes=6)
 		A = pool.map(calcA, centerindeces)
 		pool.close()
 		pool.join()
