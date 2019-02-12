@@ -32,6 +32,10 @@ parser_group_common.add_argument('--alpha', type=float, default=1,
                                  help='trace opacity (0-1)')
 parser_group_common.add_argument('--linewidth', type=float,
                                  help='line width')
+parser_group_common.add_argument('--margin-side', type=float, default=15,
+                                 help='left and right plot margin (mm)')
+parser_group_common.add_argument('--margin-bottom', type=float, default=11,
+                                 help='bottom plot margin (mm)')
 parser_group_common.add_argument('--use-constrained-layout', dest='use_constrained_layout', action='store_true', default=False,
                                  help='legacy for compare-max plot')
 
@@ -183,10 +187,10 @@ def main():
 
 	if args.size and not args.use_constrained_layout:
 		plt.subplots_adjust(
-			left=(15 / args.size[0]),
-			right=1 - (15 / args.size[0]),
+			left=(args.margin_side / args.size[0]),
+			right=1 - (args.margin_side / args.size[0]),
 			top=1 - (2 / args.size[1]),
-			bottom=(10 / args.size[1]))
+			bottom=(args.margin_bottom / args.size[1]))
 
 	use_legend = False
 
