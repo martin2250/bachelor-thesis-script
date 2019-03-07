@@ -46,6 +46,8 @@ parser_group_trace.add_argument('files', nargs='+', metavar='file',
 
 parser_group_trace.add_argument('--label',
                                 help='trace label')
+parser_group_common.add_argument('--color',
+                                 help='trace color')
 
 parser_group_trace.add_argument('--calculate-resolution', type=float, metavar='pulse_height',
                                 help='calculate resolution from optimal filtering, pulse_height = voltage of incoming step pulse')
@@ -228,7 +230,7 @@ def main():
 		else:
 			label = None
 		ax.plot(frequency, voltage * 1e6, label=label,
-		        alpha=args.alpha, lw=args.linewidth)
+		        alpha=args.alpha, lw=args.linewidth, color=trace.color)
 
 		if args.calculate_resolution:
 			# see page 21 of ME
